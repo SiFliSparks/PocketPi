@@ -1,0 +1,8 @@
+import os
+from building import *
+
+# Add source code
+src = Glob('*.c') + Glob('nofrendo/*.c') + Glob('nofrendo/cpu/*.c') + Glob('nofrendo/sndhrdw/*.c') + Glob('nofrendo/libsnss/*.c') + Glob('nofrendo/mappers/*.c') + Glob('nofrendo/nes/*.c')
+group = DefineGroup('Applications', src, depend = [''], CPPPATH=['.','./nofrendo/','./nofrendo/cpu/','./nofrendo/libsnss/','./nofrendo/mappers/','./nofrendo/nes/','./nofrendo/sndhrdw/'])
+
+Return('group')

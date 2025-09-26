@@ -1,0 +1,7 @@
+.vscode
+disk/*.*
+project/build_*
+project/__pycache__
+.sconsign.dblite
+project/*.tmp
+project/rtconfig_project.h
