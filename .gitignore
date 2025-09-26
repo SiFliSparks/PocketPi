@@ -1,5 +1,6 @@
 .vscode
 disk/*.*
+!disk/.gitkeep
 project/build_*
 project/__pycache__
 .sconsign.dblite
