@@ -94,40 +94,11 @@ To change pins or mapping, edit `key_pin_def[]` or `ConvertGamepadInput()` in `s
 
 ## Troubleshooting (FAQ)
 
-- Build fails / scons not found:
-  - Cause: Python/SCons not installed or not on PATH.
-  - Fix: Install Python and SCons (e.g. `pip install scons`) and run `scons` from `project/`.
-- Cross-toolchain or link errors:
-  - Cause: Missing cross compiler or wrong environment.
-  - Fix: Install the correct toolchain and ensure it is in PATH; check project build configs.
-- Device not recognized during flashing:
-  - Cause: missing serial driver or wrong port.
-  - Fix: check the OS device manager, install drivers, choose correct COM port, close apps that may use port.
-- Screen not displaying / LVGL init fails:
-  - Cause: wrong LCD device name, framebuffer or wiring issue.
-  - Fix: confirm `littlevgl2rtt_init("lcd")` finds the LCD device; check serial logs for errors and verify wiring.
-- Buttons not working or unstable:
-  - Cause: wrong wiring, not tied to ground, pull-up/pull-down mismatch, or noisy lines.
-  - Fix: wire buttons as pull-to-ground, check pin numbers in `key_pin_def[]`, use `key_set` or print `key_state` for debug.
-- No audio or noisy audio:
-  - Cause: audio device not opened/configured correctly, wrong codec params or DMA settings.
-  - Fix: check serial logs for `audprc`/`audcodec` errors, verify caps (sample rate, channels), try adjusting `audio_shift_bits`.
-- `disk/` files not scanned:
-  - Cause: files not placed in repo `disk/`, or filesystem not mounted.
-  - Fix: ensure test files are placed under repository `disk/` (not `project/disk`); check startup logs for mount messages; list files on device.
-- ROM crashes or graphics issues:
-  - Cause: unsupported mapper or damaged ROM.
-  - Fix: test ROM in a desktop emulator first; try another ROM; check logs.
-- Accidentally committed ROM files:
-  - Quick fix: `git rm --cached disk/<filename>` and commit.
-  - To fully remove from history use BFG or `git filter-repo` (destructive operation, force push required).
+Q: No files in the game list?
+A: Make sure you have copied your test ROM or binary files into the repository `disk/` directory, and that their file extensions are supported (for example, `.nes`). If the directory is empty or contains no supported files, the list will not display any items.
 
 If your problem is not listed, attach serial logs and steps to reproduce and open an issue.
 
 ## Issues
 
 If you find a bug or have suggestions, please open an issue on GitHub: https://github.com/SiFliSparks/PocketPi/issues
-
----
-
-If you want this README polished, translated back into Chinese, or included inline images in `README.md`, tell me and I will update the files.
