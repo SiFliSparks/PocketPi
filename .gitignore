@@ -1,5 +1,5 @@
 .vscode
-disk/*.*
+disk/
 !disk/.gitkeep
 project/build_*
 project/__pycache__

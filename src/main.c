@@ -19,6 +19,10 @@ rt_device_t lcd_device;
 rt_event_t g_tx_ev;
 rt_device_t audprc_dev;
 rt_device_t audcodec_dev;
+const char supported_extensions[][4] = {
+    "nes",
+    "NES"
+};
 
 static rt_err_t speaker_tx_done(rt_device_t dev, void *buffer)
 {
@@ -168,6 +172,24 @@ static void scroll_event_cb(lv_event_t * e)
     }
 }
 
+int get_extension(const char *filename, char *ext, int ext_size)
+{
+    const char *dot = strrchr(filename, '.');
+    if (!dot || dot == filename) return -1;
+    strncpy(ext, dot + 1, ext_size - 1);
+    ext[ext_size - 1] = '\0'; // Ensure null-termination
+    return 0;
+}
+
+int extension_filter(const char *ext)
+{
+    for(size_t i=0;i<sizeof(supported_extensions)/sizeof(supported_extensions[0]);i++)
+    {
+        if(strcmp(ext, supported_extensions[i])==0) return 1;
+    }
+    return 0;
+}
+
 void list_init(void)
 {
     cont = lv_obj_create(lv_screen_active());
@@ -189,6 +211,15 @@ void list_init(void)
     }
     while ((d = readdir(dirp)) != RT_NULL)
     {
+        char ext[16];
+        if(get_extension(d->d_name, ext, sizeof(ext)) == 0)
+        {
+            if(!extension_filter(ext)) continue;
+        }
+        else
+        {
+            continue;
+        }
         lv_obj_t * btn = lv_button_create(cont);
         lv_obj_set_width(btn, lv_pct(60));
 
