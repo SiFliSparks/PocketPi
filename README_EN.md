@@ -1,6 +1,12 @@
 # PocketPi
 
+[English](README_EN.md) | [中文](README.md)
+
 PocketPi is a small embedded games/demo project based on the SiFli platform. This repository contains source code, build scripts and resource folders needed to build and run on supported boards.
+
+## Supported board
+
+- Lichuang SF32LB52-ULP development board (reference): https://lckfb.com/project/detail/lckfb-hspi-sf32lb52-ulp?param=baseInfo
 
 ## Quick start
 
@@ -58,10 +64,6 @@ Key files and folders:
 - `README_EN.md` / `README.md`: project documentation.
 
 Typical flow: edit `disk/` → run `scons` in `project/` → flash using the download script → select and run on device.
-
-## Supported board
-
-- Lichuang SF32LB52-ULP development board (reference): https://lckfb.com/project/detail/lckfb-hspi-sf32lb52-ulp?param=baseInfo
 
 ## Hardware buttons and IO
 

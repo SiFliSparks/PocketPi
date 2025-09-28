@@ -1,6 +1,11 @@
 # PocketPi
 
-一个基于 Sifli 的嵌入式游戏/演示工程（PocketPi）。此仓库包含源代码、构建脚本与运行所需的资源目录。
+[English](README_EN.md) | [中文](README.md)
+
+一个基于 sf32lb52 模组的嵌入式游戏/演示工程（PocketPi）。此仓库包含源代码、构建脚本与运行所需的资源目录。
+
+## 支持的开发板
+- [立创·黄山派SF32LB52-ULP开发板](https://lckfb.com/project/detail/lckfb-hspi-sf32lb52-ulp?param=baseInfo)
 
 ## 快速开始
 
@@ -57,10 +62,6 @@ please input the serial port num:5
 - `README.md`：工程介绍与使用说明（本文件）。
 
 通常流程：编辑 `disk/`（放入本地测试文件）→ 运行 `scons` 构建 `project/` → 通过下载脚本烧录并在设备上选择运行。
-
-## 支持的开发板
-- [立创·黄山派SF32LB52-ULP开发板](https://lckfb.com/project/detail/lckfb-hspi-sf32lb52-ulp?param=baseInfo)
-
 
 ## 硬件按键与 IO
 
