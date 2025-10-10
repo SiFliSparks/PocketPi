@@ -24,13 +24,44 @@ const char supported_extensions[][4] = {
     "NES"
 };
 
+LV_FONT_DECLARE(nmdws_16);
+
 static rt_err_t speaker_tx_done(rt_device_t dev, void *buffer)
 {
     //此函数在发送一帧完成的dma中断里，表示发送一次完成
     rt_event_send(g_tx_ev, 1);
     return RT_EOK;
 }
-#define DMA_BUF_SIZE    (2048*2)
+#define DMA_BUF_SIZE    (512*2)
+
+#define ADJUST_BUFFER_LENGTH 4096
+#define ADJUST_BUFFER_TARGET 2048
+typedef struct sound_adjust_buffer_s
+{
+    int16_t samples[ADJUST_BUFFER_LENGTH];
+    int write_p, read_p;
+    int step; // 每次处理的步长
+    int accmu; // 当达到+/-1,000,000时，丢弃或插入一个采样点
+    float adjust_rate; // 采样率调整比例
+} sound_adjust_buffer_t;
+extern sound_adjust_buffer_t sound_adjust_buffer;
+extern int get_sample_buffered();
+extern void sound_adjust_buffer_put(int16_t* samples, uint32_t shift_bits, int length);
+extern void sound_adjust_buffer_get(int16_t* samples, int length);
+
+rt_thread_t audio_thread = RT_NULL;
+static void audio_thread_entry(void *parameter)
+{
+    int16_t audio_temp_buffer[DMA_BUF_SIZE];
+    int audio_write_p = 0;
+    while (1)
+    {
+        sound_adjust_buffer_get(&audio_temp_buffer[audio_write_p], DMA_BUF_SIZE/2);
+        uint32_t evt = 0;
+        rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
+        rt_device_write(audprc_dev, 0, &audio_temp_buffer[audio_write_p], DMA_BUF_SIZE);
+    }
+}
 
 #ifndef FS_REGION_START_ADDR
     #error "Need to define file system start address!"
@@ -91,6 +122,8 @@ extern lv_img_dsc_t nes_img_dsc; // LVGL 图像描述符
 extern lv_obj_t * nes_img_obj; // LVGL 图像对象
 int nofrendo_main(int argc, char *argv[]);
 
+void key_deinit();
+rt_thread_t nes_thread = RT_NULL;
 lv_obj_t * cont;
 void emu_thread_entry(void *parameter)
 {
@@ -99,9 +132,12 @@ void emu_thread_entry(void *parameter)
     char* args[1] = { filename };
 
     nofrendo_main(1,args);
+
+    rt_kprintf("Emu thread exit.\n");
+    nes_thread = RT_NULL;
+    key_deinit();
 }
 
-rt_thread_t nes_thread = RT_NULL;
 static void btn_event_cb(lv_event_t * e)
 {
     rt_kprintf("Button clicked\n");
@@ -121,7 +157,7 @@ static void btn_event_cb(lv_event_t * e)
 
     nes_thread = rt_thread_create("nes_launcher",
         (void(*)(void*))emu_thread_entry, file_name,
-        8192, 21, 100);
+        16384, 21, 100);
     if (nes_thread != NULL) {
         rt_thread_startup(nes_thread);
     }
@@ -223,9 +259,14 @@ void list_init(void)
         lv_obj_t * btn = lv_button_create(cont);
         lv_obj_set_width(btn, lv_pct(60));
 
-        lv_obj_t * label = lv_label_create(btn);
-        lv_label_set_text_fmt(label, "%s", d->d_name);
-        lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_t * label = lv_label_create(btn);
+    lv_label_set_text_fmt(label, "%s", d->d_name);
+    lv_obj_set_style_text_font(label, &nmdws_16, 0);
+    /* Make the label narrower than the button and enable circular scrolling
+     * so long filenames will scroll (marquee). Adjust percent if needed. */
+    lv_obj_set_width(label, lv_pct(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_RELEASED, NULL);
     }
     closedir(dirp);
 
@@ -337,6 +378,11 @@ int main(void)
     stream = AUDIO_STREAM_REPLAY | ((1 << HAL_AUDCODEC_DAC_CH0) << 8);
     rt_device_control(audcodec_dev, AUDIO_CTL_START, &stream);
     rt_event_send(g_tx_ev, 1);
+    audio_thread = rt_thread_create("audio_thread",
+        audio_thread_entry, RT_NULL,
+        4096, 2, 10);
+    if (audio_thread != RT_NULL) rt_thread_startup(audio_thread);
+
     // 初始化音频完成
 
     list_init();
@@ -345,6 +391,12 @@ int main(void)
     {
         if(nes_thread == RT_NULL)
         {
+            if(nes_img_obj != NULL)
+            {
+                lv_obj_delete(nes_img_obj);
+                nes_img_obj = NULL;
+                list_init();
+            }
             ms = lv_task_handler();
             rt_thread_mdelay(ms);
         }

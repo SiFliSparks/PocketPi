@@ -65,29 +65,49 @@ please input the serial port num:5
 
 ## 硬件按键与 IO
 
-本工程把游戏按键通过外部引出的 GPIO 实现，相关实现位于 `src/video_audio.c`（部分行为在 `src/main.c` 中被调用），下面是要点说明：
+本工程把游戏按键通过外部引出的 GPIO 实现，相关实现位于 `src/video_audio.c`（部分行为在 `src/main.c` 中被调用）。
 
-- 按键 GPIO 定义：
-	- `int key_pin_def[] = {30,24,25,20,10,11,27,28,29};` （共 9 个按键，板上使用上拉输入）。
+- 按键硬件定义：
+
+	- 按键 GPIO 数组：`int key_pin_def[] = {30,24,25,20,10,11,27,28,29};`（共 9 个按键，板上使用上拉输入）。
+
 - 扫描与去抖：
-	- 使用一个周期为 200 Hz 的软件定时器调用 `key_scan()` 进行轮询。
-	- 每个按键维护一个 8-bit 的移位缓冲，需连续读到 `0xFF` 才判定为按下，`0x00` 判定为释放，从而实现去抖。
-- 按键索引到游戏/系统事件的映射（参考 `ConvertGamepadInput()`）：
-	- 索引 0：Select（当按下并配合索引 5 或 8 的释放时，会调整音频的 shift 值）
-	- 索引 2：Start
-	- 索引 3：B
-	- 索引 4：A
-	- 索引 5：Up
-	- 索引 6：Right
-	- 索引 7：Left
-	- 索引 8：Down
-	- 索引 1 当前未使用
 
-- 接线建议：按键一端接相应 GPIO（如上数组中的编号），另一端接地。GPIO 配置为上拉，按下时引脚拉低为有效按下。
+	- 使用 200 Hz 的软件定时器周期性调用 `key_scan()`。
+	- 每个按键用 8-bit 移位缓冲做去抖：连续读到 `0xFF` 判定为按下，连续 `0x00` 判定为释放。
 
-- 扩展说明：如需改变 GPIO 引脚或按键映射，请修改 `src/video_audio.c` 中的 `key_pin_def` 或 `ConvertGamepadInput()`，然后重新编译固件。
+- 按键索引到功能的映射（索引 0..8）：
 
-- 与 UI 的关系：主程序（`main.c`）使用 LVGL 显示文件列表并响应触摸/按键事件；物理按键主要在运行的 NES 仿真中作为手柄输入，也可用于系统级快捷操作（例如调整音频，目前音量可以使用select键+Up/Down键进行调整）。
+- 按键索引与 GPIO、功能（表格）：
+
+| 索引 | GPIO 引脚 | 按键名称 | 说明 | Select+组合键（按住 Select 时） |
+|------:|:---------:|:--------|:-----|:--------------------------------|
+| 0 | 30 | Select | 主组合键，用于触发系统级快捷操作 游戏Select键| — |
+| 1 | 24 | 未使用 | 当前未分配功能 | — |
+| 2 | 25 | Start | 游戏 Start 按键 | Select + Start → 触发退出（调用 `trigger_quit()`） |
+| 3 | 20 | B | 游戏 B 按键 | Select + B → 读取存档（调用 `state_load()`） |
+| 4 | 10 | A | 游戏 A 按键 | Select + A → 保存存档（调用 `state_save()`） |
+| 5 | 11 | Up | 上 / 菜单上 | Select + Up → 降低音频 shift（`audio_shift_bits--`） |
+| 6 | 27 | Right | 右 / 菜单右 | Select + Right → 切到下一个存档槽（`selectedSlot++`，并调用 `state_setslot()`） |
+| 7 | 28 | Left | 左 / 菜单左 | Select + Left → 切到上一个存档槽（`selectedSlot--`，并调用 `state_setslot()`） |
+| 8 | 29 | Down | 下 / 菜单下 | Select + Down → 增加音频 shift（`audio_shift_bits++`） |
+
+说明：表中“Select+组合键”均由 `ConvertGamepadInput()` 中的逻辑判定，判定条件为“Select（索引 0）持续按住且目标键产生按下事件（press event）”。
+
+- 按键事件与仿真输入的关系：
+
+	- 实际送入仿真的按键位由 `ConvertGamepadInput()` 返回的位掩码控制，再由 `osd_getinput()` 中的事件表映射到具体的 `event_` 回调，从而驱动行为（例如 joypad、soft_reset、hard_reset 等）。
+
+- 接线与修改建议：
+
+	- 接线建议：按键一端接对应 GPIO（参考 `key_pin_def` 中的编号），另一端接地；GPIO 使用上拉，按下为低电平。
+	- 如果要改变按键对应的功能或组合行为，请修改 `src/video_audio.c` 中的 `key_pin_def`（改变物理引脚）和/或 `ConvertGamepadInput()`（改变按键到事件的映射与组合逻辑），然后重新编译固件。
+
+- 调试与命令：
+
+	- 可以使用 `MSH_CMD_EXPORT` 导出的命令（例如 `key_set`、`tev`、`trigger_quit`）进行简单调试；`key_set` 可用于在运行时注入 `key_state` 值来模拟按键输入。
+
+以上说明基于 `src/video_audio.c` 中的当前实现（包含保存/加载/切槽/退出/音频调整等组合键）。
 
 ## 参考链接
 - [Sifli 官方仓库](https://github.com/OpenSiFli/SiFli-SDK/tree/main)

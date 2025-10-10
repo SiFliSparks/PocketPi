@@ -75,15 +75,21 @@ Physical game buttons are exposed through GPIO pins. Implementation details live
   - A software timer at ~200 Hz calls `key_scan()` to poll keys.
   - Each key uses an 8-bit shift buffer. `0xFF` indicates stable pressed, `0x00` indicates released (debounce logic).
 - Key index → game/system mapping (see `ConvertGamepadInput()`):
-  - Index 0: Select (also used with index 5 or 8 release to adjust audio shift)
-  - Index 2: Start
-  - Index 3: B
-  - Index 4: A
-  - Index 5: Up
-  - Index 6: Right
-  - Index 7: Left
-  - Index 8: Down
-  - Index 1: unused
+ - Key index → GPIO, function and Select-combos (summary):
+
+| Index | GPIO Pin | Key name | Description | Select+ combo (when Select held) |
+|------:|:--------:|:--------|:-----------|:---------------------------------|
+| 0 | 30 | Select | Main modifier key used for system shortcuts | — |
+| 1 | 24 | Unused | Currently no assignment | — |
+| 2 | 25 | Start | Game Start button | Select + Start → trigger quit (`trigger_quit()`) |
+| 3 | 20 | B | Game B button | Select + B → load state (`state_load()`) |
+| 4 | 10 | A | Game A button | Select + A → save state (`state_save()`) |
+| 5 | 11 | Up | Up / menu up | Select + Up → decrease audio shift (`audio_shift_bits--`) |
+| 6 | 27 | Right | Right / menu right | Select + Right → next save slot (`selectedSlot++`, calls `state_setslot()`) |
+| 7 | 28 | Left | Left / menu left | Select + Left → previous save slot (`selectedSlot--`, calls `state_setslot()`) |
+| 8 | 29 | Down | Down / menu down | Select + Down → increase audio shift (`audio_shift_bits++`) |
+
+Note: The Select+combo actions are implemented in `ConvertGamepadInput()` and are detected as "Select held + target key press event".
 - Debug / API:
   - `get_key_state(index)` — read current state (0/1)
   - `get_key_press_event(index)` / `get_key_release_event(index)` — read and clear one-shot events

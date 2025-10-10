@@ -61,6 +61,7 @@ extern mapintf_t map85_intf;
 extern mapintf_t map94_intf;
 extern mapintf_t map99_intf;
 extern mapintf_t map231_intf;
+extern mapintf_t map74_intf;
 
 /* implemented mapper interfaces */
 mapintf_t *mappers[] =
@@ -92,6 +93,7 @@ mapintf_t *mappers[] =
    &map65_intf,
    &map66_intf,
    &map70_intf,
+   &map74_intf,
    &map75_intf,
    &map78_intf,
    &map79_intf,

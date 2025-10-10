@@ -462,6 +462,9 @@ rominfo_t *rom_load(const char *filename)
    if (false == mmc_peek(rominfo->mapper_number))
    {
       gui_sendmsg(GUI_RED, "Mapper %d not yet implemented", rominfo->mapper_number);
+      rominfo->sram_banks = 0; /* no SRAM */
+      rominfo->vram_banks = 0; /* no VRAM */
+      rominfo->sram = NULL;
       goto _fail;
    }
 

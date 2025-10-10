@@ -369,13 +369,10 @@ void nes_emulate(void)
 
    osd_setsound(nes.apu->process);
 
-   last_ticks = nofrendo_ticks;
+   last_ticks = nofrendo_ticks = 0;
    frames_to_render = 0;
    nes.scanline_cycles = 0;
    nes.fiq_cycles = (int)NES_FIQ_PERIOD;
-
-   int tick_counter = 0;
-   int rendered_frames = 0;
 
    for (int i = 0; i < 4; ++i)
    {
@@ -383,23 +380,23 @@ void nes_emulate(void)
       system_video(1);
    }
 
+   int frame_counter = 0;
+   int64_t last_report_fps_time = rt_tick_get();
    int64_t start = rt_tick_get();
    while (false == nes.poweroff)
    {
-      nofrendo_ticks = (float)(rt_tick_get() - start) / 16.67;
+      nofrendo_ticks = (float)(rt_tick_get() - start) / 16.666666667;
+      if(rt_tick_get() - last_report_fps_time >= 1000)
+      {
+         printf("FPS: %d\n", frame_counter);
+         frame_counter = 0;
+         last_report_fps_time += 1000;;
+      }
       if (nofrendo_ticks != last_ticks)
       {
          int tick_diff = nofrendo_ticks - last_ticks;
 
          frames_to_render += tick_diff;
-         tick_counter += tick_diff;
-         if (tick_counter >= NES_REFRESH_RATE)
-         {
-            tick_counter -= NES_REFRESH_RATE;
-            printf("fps: %d\n", rendered_frames);
-            rendered_frames = 0;
-            tick_counter = 0;
-         }
          gui_tick(tick_diff);
          last_ticks = nofrendo_ticks;
          // printf("nofrendo ticks: %d.\n",nofrendo_ticks);
@@ -424,7 +421,7 @@ void nes_emulate(void)
          frames_to_render = 0;
          nes_renderframe(true);
          system_video(true);
-         rendered_frames++;
+         frame_counter++;
          // printf("render end: %d\n",(int)rt_tick_get());
       }
       do_audio_frame();

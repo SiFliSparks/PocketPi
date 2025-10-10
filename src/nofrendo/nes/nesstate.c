@@ -337,7 +337,7 @@ static void load_mapperblock(nes_t *state, SNSS_FILE *snssFile)
    mmc_setcontext(state->mmc);
 }
 
-
+extern nes_t *real_nes;
 int state_save(void)
 {
    SNSS_FILE *snssFile;
@@ -347,6 +347,7 @@ int state_save(void)
 
    /* get the pointer to our NES machine context */
    machine = nes_getcontextptr();
+   machine = real_nes;
    ASSERT(machine);
    
    /* build our filename using the image's name and the slot number */

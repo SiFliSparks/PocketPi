@@ -46,6 +46,7 @@ uint32_t key_state = 0;
 uint32_t key_release_event = 0;
 uint32_t key_press_event = 0;
 
+rt_timer_t key_timer = NULL;
 void key_scan();
 void key_init()
 {
@@ -62,7 +63,7 @@ void key_init()
         HAL_PIN_Set(PAD_PA00 + key_pin_def[i], GPIO_A0 + key_pin_def[i], PIN_PULLUP, 1);
     }
 
-    rt_timer_t timer = rt_timer_create(
+    key_timer = rt_timer_create(
         "key_scan",                          // 定时器名称
         (void (*)(void*))key_scan,          // 超时回调函数（需强制转换函数类型）
         RT_NULL,                        // 回调函数参数
@@ -70,9 +71,19 @@ void key_init()
         RT_TIMER_FLAG_PERIODIC          // 周期定时模式
     );
 
-    if (timer != RT_NULL)
+    if (key_timer != RT_NULL)
     {
-        rt_timer_start(timer); // 启动定时器
+        rt_timer_start(key_timer); // 启动定时器
+    }
+}
+
+void key_deinit()
+{
+    if (key_timer != RT_NULL)
+    {
+        rt_timer_stop(key_timer);
+        rt_timer_delete(key_timer);
+        key_timer = RT_NULL;
     }
 }
 
@@ -97,6 +108,7 @@ void key_scan()
             if(get_key_state(i)==0)
             {
                 key_press_event|=1<<i;
+                key_release_event&=~(1<<i);
             }
             key_state|=1<<i;
         }
@@ -105,6 +117,7 @@ void key_scan()
             if(get_key_state(i)==1)
             {
                 key_release_event|=1<<i;
+                key_press_event&=~(1<<i);
             }
             key_state&=~(1<<i);
         }
@@ -216,6 +229,76 @@ extern rt_device_t audprc_dev;
 extern rt_device_t audcodec_dev;
 uint32_t audio_shift_bits = 5;
 
+
+#define ADJUST_BUFFER_LENGTH 4096
+#define ADJUST_BUFFER_TARGET 2048
+typedef struct sound_adjust_buffer_s
+{
+    int16_t samples[ADJUST_BUFFER_LENGTH];
+    int write_p, read_p;
+    int step; // 每次处理的步长
+    int accmu; // 当达到+/-1,000,000时，丢弃或插入一个采样点
+    float adjust_rate; // 采样率调整比例
+} sound_adjust_buffer_t;
+sound_adjust_buffer_t sound_adjust_buffer={
+    .write_p=0,
+    .read_p=0,
+    .step=0,
+    .accmu=0,
+    .adjust_rate=0.001f
+};
+int get_sample_buffered()
+{
+    int ret = sound_adjust_buffer.write_p - sound_adjust_buffer.read_p;
+    if(ret<0) ret+=ADJUST_BUFFER_LENGTH;
+    return ret;
+}
+void sound_adjust_buffer_put(int16_t* samples, uint32_t shift_bits, int length)
+{
+    int err = get_sample_buffered() - ADJUST_BUFFER_TARGET;
+    sound_adjust_buffer.step += sound_adjust_buffer.adjust_rate * err;
+    for(int i=0;i<length;i++)
+    {
+        sound_adjust_buffer.accmu += sound_adjust_buffer.step;
+        if(sound_adjust_buffer.accmu >= 1000000)
+        {
+            sound_adjust_buffer.write_p++;
+            sound_adjust_buffer.accmu -= 1000000;
+
+        }
+        else if(sound_adjust_buffer.accmu <= -1000000)
+        {
+            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
+            if(sound_adjust_buffer.write_p == ADJUST_BUFFER_LENGTH)
+                sound_adjust_buffer.write_p=0;
+            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
+            sound_adjust_buffer.accmu += 1000000;
+        }
+        else
+        {
+            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
+        }
+        if(sound_adjust_buffer.write_p == ADJUST_BUFFER_LENGTH)
+            sound_adjust_buffer.write_p=0;
+    }
+}
+void sound_adjust_buffer_get(int16_t* samples, int length)
+{
+    for(int i=0;i<length;i++)
+    {
+        if(sound_adjust_buffer.read_p == sound_adjust_buffer.write_p)
+        {
+            samples[i]=0;
+        }
+        else
+        {
+            samples[i]=sound_adjust_buffer.samples[sound_adjust_buffer.read_p++];
+            if(sound_adjust_buffer.read_p == ADJUST_BUFFER_LENGTH)
+                sound_adjust_buffer.read_p=0;
+        }
+    }
+}
+
 void do_audio_frame()
 {
     // printf("audio frame start: %d\n",(int)rt_tick_get());
@@ -226,18 +309,12 @@ void do_audio_frame()
         if (n > left)
             n = left;
         audio_callback(audio_frame, n);
-        for(int i=0;i<n;i++)
+        while(ADJUST_BUFFER_LENGTH - get_sample_buffered() < n)
         {
-            audio_temp_buffer[audio_write_p++] = audio_frame[i]>>=audio_shift_bits;
-            if(audio_write_p == 2048)
-            {
-                rt_uint32_t evt;
-                // rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
-                rt_device_write(audprc_dev, 0, audio_temp_buffer, 2048*2);
-                audio_write_p=0;
-            }
+            rt_thread_mdelay(1);
         }
-
+        sound_adjust_buffer_put(audio_frame, audio_shift_bits, n);
+        
         left -= n;
     }
     // printf("audio frame end: %d\n",(int)rt_tick_get());
@@ -390,6 +467,7 @@ static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
     // printf("look up end: %d\n",(int)rt_tick_get());
     // printf("flush start: %d\n",(int)rt_tick_get());
     
+    lv_img_cache_invalidate_src(&nes_img_dsc);
     lv_obj_invalidate(nes_img_obj); // 标记该对象需要重绘
     // printf("flush end: %d\n",(int)rt_tick_get());
     uint32_t ms = lv_task_handler();
@@ -422,17 +500,104 @@ static void osd_initinput()
 static bool ignoreMenuButton;
 static unsigned short powerFrameCount;
 
+/**
+ * @brief temporary function to trigger quit event
+ */
+void trigger_quit()
+{
+    event_t evh = event_get(event_quit);
+    if (evh)
+    {
+        evh(INP_STATE_MAKE);
+        evh(INP_STATE_BREAK);
+    }
+}
+MSH_CMD_EXPORT(trigger_quit, trigger quit event);
+
+void trigger_event(int event_id)
+{
+    event_t evh = event_get(event_id);
+    if (evh)
+    {
+        evh(INP_STATE_MAKE);
+        evh(INP_STATE_BREAK);
+    }
+}
+
+void tev(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("Usage: tev <event_id>\n");
+        rt_kprintf("Example: tev 1\n");
+        return;
+    }
+
+    /* 将字符串参数转换为整型数 */
+    char *endptr;
+    long parsed_value = strtol(argv[1], &endptr, 10); /* 10表示10进制 */
+
+    /* 检查转换是否成功 */
+    if (*endptr != '\0')
+    {
+        rt_kprintf("Error: Invalid event ID. Please input a number.\n");
+        return;
+    }
+
+    /* 检查值是否在合理的范围内 (根据你的变量类型调整，这里假设event_id是int) */
+    if (parsed_value < 0 || parsed_value > 60) // 假设事件ID在0到60之间
+    {
+        rt_kprintf("Error: Event ID out of range. Please input between 0 and 60.\n");
+        return;
+    }
+
+    trigger_event((int)parsed_value);
+}
+MSH_CMD_EXPORT(tev, trigger event by id e.g: tev 1);
+
+int selectedSlot = 0;
 static int ConvertGamepadInput()
 {
     int result = 0;
 
-    if(get_key_state(0) && get_key_release_event(5))
+    if(get_key_state(0) && get_key_press_event(5))
     {
         if(audio_shift_bits > 1) audio_shift_bits--;
     }
-    if(get_key_state(0) && get_key_release_event(8))
+    if(get_key_state(0) && get_key_press_event(8))
     {
         if(audio_shift_bits < 16) audio_shift_bits++;
+    }
+
+    if(get_key_state(0) && get_key_press_event(7))
+    {
+        selectedSlot--;
+        if(selectedSlot < 0) selectedSlot = 9;
+        rt_kprintf("State slot: %d\n",selectedSlot);
+        state_setslot(selectedSlot);
+    }
+
+    if(get_key_state(0) && get_key_press_event(6))
+    {
+        selectedSlot++;
+        if(selectedSlot > 9) selectedSlot = 0;
+        rt_kprintf("State slot: %d\n",selectedSlot);
+        state_setslot(selectedSlot);
+    }
+
+    if(get_key_state(0)&& get_key_press_event(4))
+    {
+        state_save();
+    }
+
+    if(get_key_state(0)&& get_key_press_event(3))
+    {
+        state_load();
+    }
+
+    if(get_key_state(0)&& get_key_press_event(2))
+    {
+        trigger_quit();
     }
 
     if(get_key_state(0))
