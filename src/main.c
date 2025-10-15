@@ -125,6 +125,7 @@ int nofrendo_main(int argc, char *argv[]);
 void key_deinit();
 rt_thread_t nes_thread = RT_NULL;
 lv_obj_t * cont;
+extern uint16_t *lcdfb;
 void emu_thread_entry(void *parameter)
 {
     char* filename = parameter;//"mario.nes";
@@ -395,6 +396,8 @@ int main(void)
             {
                 lv_obj_delete(nes_img_obj);
                 nes_img_obj = NULL;
+                free(lcdfb);
+                lcdfb = NULL;
                 list_init();
             }
             ms = lv_task_handler();

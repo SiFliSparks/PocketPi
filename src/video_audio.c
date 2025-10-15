@@ -439,19 +439,13 @@ static void free_write(int num_dirties, rect_t *dirty_rects)
     bmp_destroy(&myBitmap);
 }
 
-static uint16_t lcdfb[256 * 224];
+// uint16_t lcdfb[256 * 224];
+uint16_t *lcdfb;
 extern rt_device_t lcd_device;
 extern const char *framebuffer;
 int redrawNesFlag = 0; // 0:not redraw, 1:need redraw, 2:redrawing
 static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
 {
-    // if (bmp->line[0] != NULL)
-    // {
-    //     memcpy(lcdfb, bmp->line[0], 256 * 224);
-
-    //     void *arg = (void *)lcdfb;
-    //     xQueueSend(vidQueue, &arg, portMAX_DELAY);
-    // }
     // printf("look up start: %d\n",(int)rt_tick_get());
     // while(redrawNesFlag) rt_thread_mdelay(1);
     for(int y=0;y<224;y++)
@@ -721,6 +715,12 @@ int osd_init()
 {
     log_chain_logfunc(logprint);
 
+    lcdfb = malloc(sizeof(uint16_t) * 256 * 224);
+    if(lcdfb == NULL)
+    {
+        printf("Failed to allocate memory for lcdfb\n");
+        return -1;
+    }
     key_init();
     nes_img_dsc.header.always_zero = 0;
     nes_img_dsc.header.w = 224;
