@@ -221,8 +221,7 @@ int osd_installtimer(int frequency, void *func, int funcsize, void *counter, int
 */
 static void (*audio_callback)(void *buffer, int length) = NULL;
 // QueueHandle_t queue;
-static short audio_frame[1024];
-short audio_temp_buffer[2048];
+static short audio_frame[4096];
 int audio_write_p = 0;
 extern rt_event_t g_tx_ev;
 extern rt_device_t audprc_dev;
@@ -230,71 +229,53 @@ extern rt_device_t audcodec_dev;
 uint32_t audio_shift_bits = 5;
 
 
-#define ADJUST_BUFFER_LENGTH 4096
-#define ADJUST_BUFFER_TARGET 2048
-typedef struct sound_adjust_buffer_s
+#define RING_BUFFER_LENGTH 1536
+typedef struct audio_ring_buffer_s
 {
-    int16_t samples[ADJUST_BUFFER_LENGTH];
+    int16_t samples[RING_BUFFER_LENGTH];
     int write_p, read_p;
-    int step; // 每次处理的步长
-    int accmu; // 当达到+/-1,000,000时，丢弃或插入一个采样点
-    float adjust_rate; // 采样率调整比例
-} sound_adjust_buffer_t;
-sound_adjust_buffer_t sound_adjust_buffer={
-    .write_p=0,
-    .read_p=0,
-    .step=0,
-    .accmu=0,
-    .adjust_rate=0.001f
+} audio_ring_buffer_t;
+audio_ring_buffer_t audio_ring_buffer = {
+    .write_p = 0,
+    .read_p = 0
 };
-int get_sample_buffered()
+
+int audio_ring_get_buffered()
 {
-    int ret = sound_adjust_buffer.write_p - sound_adjust_buffer.read_p;
-    if(ret<0) ret+=ADJUST_BUFFER_LENGTH;
+    int ret = audio_ring_buffer.write_p - audio_ring_buffer.read_p;
+    if (ret < 0)
+        ret += RING_BUFFER_LENGTH;
     return ret;
 }
-void sound_adjust_buffer_put(int16_t* samples, uint32_t shift_bits, int length)
-{
-    int err = get_sample_buffered() - ADJUST_BUFFER_TARGET;
-    sound_adjust_buffer.step += sound_adjust_buffer.adjust_rate * err;
-    for(int i=0;i<length;i++)
-    {
-        sound_adjust_buffer.accmu += sound_adjust_buffer.step;
-        if(sound_adjust_buffer.accmu >= 1000000)
-        {
-            sound_adjust_buffer.write_p++;
-            sound_adjust_buffer.accmu -= 1000000;
 
-        }
-        else if(sound_adjust_buffer.accmu <= -1000000)
-        {
-            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
-            if(sound_adjust_buffer.write_p == ADJUST_BUFFER_LENGTH)
-                sound_adjust_buffer.write_p=0;
-            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
-            sound_adjust_buffer.accmu += 1000000;
-        }
-        else
-        {
-            sound_adjust_buffer.samples[sound_adjust_buffer.write_p++]=samples[i]>>shift_bits;
-        }
-        if(sound_adjust_buffer.write_p == ADJUST_BUFFER_LENGTH)
-            sound_adjust_buffer.write_p=0;
+int audio_ring_get_free()
+{
+    return RING_BUFFER_LENGTH - audio_ring_get_buffered() - 1;
+}
+
+void audio_ring_buffer_put(int16_t *samples, uint32_t shift_bits, int length)
+{
+    for (int i = 0; i < length; i++)
+    {
+        audio_ring_buffer.samples[audio_ring_buffer.write_p++] = samples[i] >> shift_bits;
+        if (audio_ring_buffer.write_p == RING_BUFFER_LENGTH)
+            audio_ring_buffer.write_p = 0;
     }
 }
-void sound_adjust_buffer_get(int16_t* samples, int length)
+
+void audio_ring_buffer_get(int16_t *samples, int length)
 {
-    for(int i=0;i<length;i++)
+    for (int i = 0; i < length; i++)
     {
-        if(sound_adjust_buffer.read_p == sound_adjust_buffer.write_p)
+        if (audio_ring_buffer.read_p == audio_ring_buffer.write_p)
         {
-            samples[i]=0;
+            samples[i] = 0;
         }
         else
         {
-            samples[i]=sound_adjust_buffer.samples[sound_adjust_buffer.read_p++];
-            if(sound_adjust_buffer.read_p == ADJUST_BUFFER_LENGTH)
-                sound_adjust_buffer.read_p=0;
+            samples[i] = audio_ring_buffer.samples[audio_ring_buffer.read_p++];
+            if (audio_ring_buffer.read_p == RING_BUFFER_LENGTH)
+                audio_ring_buffer.read_p = 0;
         }
     }
 }
@@ -302,21 +283,14 @@ void sound_adjust_buffer_get(int16_t* samples, int length)
 void do_audio_frame()
 {
     // printf("audio frame start: %d\n",(int)rt_tick_get());
-    int left = DEFAULT_SAMPLERATE / NES_REFRESH_RATE;
-    while (left>0)
-    {
-        int n = DEFAULT_FRAGSIZE;
-        if (n > left)
-            n = left;
-        audio_callback(audio_frame, n);
-        while(ADJUST_BUFFER_LENGTH - get_sample_buffered() < n)
-        {
-            rt_thread_mdelay(1);
-        }
-        sound_adjust_buffer_put(audio_frame, audio_shift_bits, n);
-        
-        left -= n;
-    }
+    // printf("audio buffer now level: %d\n", audio_ring_get_buffered());
+    int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
+    int free = audio_ring_get_free();
+    if(nsamples > free)
+        nsamples = free;
+    audio_callback(audio_frame, nsamples);
+    audio_ring_buffer_put(audio_frame, audio_shift_bits, nsamples);
+    // printf("audio buffer level after put: %d\n", audio_ring_get_buffered());
     // printf("audio frame end: %d\n",(int)rt_tick_get());
 }
 

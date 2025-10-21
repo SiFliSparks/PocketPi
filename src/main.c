@@ -32,34 +32,23 @@ static rt_err_t speaker_tx_done(rt_device_t dev, void *buffer)
     rt_event_send(g_tx_ev, 1);
     return RT_EOK;
 }
-#define DMA_BUF_SIZE    (512*2)
+#define DMA_BUF_SIZE    (256*2)
 
-#define ADJUST_BUFFER_LENGTH 4096
-#define ADJUST_BUFFER_TARGET 2048
-typedef struct sound_adjust_buffer_s
-{
-    int16_t samples[ADJUST_BUFFER_LENGTH];
-    int write_p, read_p;
-    int step; // 每次处理的步长
-    int accmu; // 当达到+/-1,000,000时，丢弃或插入一个采样点
-    float adjust_rate; // 采样率调整比例
-} sound_adjust_buffer_t;
-extern sound_adjust_buffer_t sound_adjust_buffer;
-extern int get_sample_buffered();
-extern void sound_adjust_buffer_put(int16_t* samples, uint32_t shift_bits, int length);
-extern void sound_adjust_buffer_get(int16_t* samples, int length);
+// ring buffer for audio samples (implemented in video_audio.c)
+extern int audio_ring_get_buffered();
+extern void audio_ring_buffer_put(int16_t* samples, uint32_t shift_bits, int length);
+extern void audio_ring_buffer_get(int16_t* samples, int length);
 
 rt_thread_t audio_thread = RT_NULL;
 static void audio_thread_entry(void *parameter)
 {
     int16_t audio_temp_buffer[DMA_BUF_SIZE];
-    int audio_write_p = 0;
     while (1)
     {
-        sound_adjust_buffer_get(&audio_temp_buffer[audio_write_p], DMA_BUF_SIZE/2);
+        audio_ring_buffer_get(audio_temp_buffer, DMA_BUF_SIZE/2);
         uint32_t evt = 0;
         rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
-        rt_device_write(audprc_dev, 0, &audio_temp_buffer[audio_write_p], DMA_BUF_SIZE);
+        rt_device_write(audprc_dev, 0, audio_temp_buffer, DMA_BUF_SIZE);
     }
 }
 
