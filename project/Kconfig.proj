@@ -2,4 +2,37 @@
 config CUSTOM_MEM_MAP
     bool 
 	select custom_mem_map
-	default y if !SOC_SIMULATOR
+	default y
+
+comment "------------Project configuration-----------"
+    
+if !BSP_USING_BUILT_LCD
+
+	config LCD_USING_ST7789_8080
+		bool
+		default n
+
+	choice
+        prompt "Custom LCD driver"
+        default LCD_USING_ZJY_ST7789_2_0
+
+        config LCD_USING_ZJY_ST7789_2_0            
+            bool "2.0 st7789"
+            select LCD_USING_ST7789_8080                  
+            select BSP_LCDC_USING_DBI
+
+    endchoice
+
+    config LCD_HOR_RES_MAX
+        int
+	    default 320 if LCD_USING_ZJY_ST7789_2_0
+
+    config LCD_VER_RES_MAX
+        int
+        default 320 if LCD_USING_ZJY_ST7789_2_0
+
+    config LCD_DPI
+        int
+        default 235 if LCD_USING_ZJY_ST7789_2_0
+
+endif
