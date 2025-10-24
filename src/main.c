@@ -219,7 +219,7 @@ int extension_filter(const char *ext)
 void list_init(void)
 {
     cont = lv_obj_create(lv_screen_active());
-    lv_obj_set_size(cont, 200, 200);
+    lv_obj_set_size(cont, 240, 320);
     lv_obj_center(cont);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_add_event_cb(cont, scroll_event_cb, LV_EVENT_SCROLL, NULL);
@@ -291,6 +291,8 @@ int main(void)
     rt_uint32_t ms;
     /* init littlevGL */
     ret = littlevgl2rtt_init("lcd");
+    HAL_PIN_Set(PAD_PA00 + 41, LCDC1_8080_DIO5, PIN_PULLDOWN, 1);
+    HAL_PIN_Set(PAD_PA00 + 37, LCDC1_8080_DIO2, PIN_PULLDOWN, 1);
     if (ret != RT_EOK)
     {
         return ret;
@@ -376,7 +378,7 @@ int main(void)
 
     // 初始化音频完成
 
-    list_init();
+    // list_init();
     /* Infinite loop */
     
     HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
@@ -436,9 +438,11 @@ int main(void)
         buf[0] = 0x23; buf[1] = 0xFF;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
     }
-    while(1)
-    {
-        rt_thread_mdelay(100);
+        nes_thread = rt_thread_create("nes_launcher",
+        (void(*)(void*))emu_thread_entry, (void*)"a.nes",
+        16384, 21, 100);
+    if (nes_thread != NULL) {
+        rt_thread_startup(nes_thread);
     }
     while (1)
     {

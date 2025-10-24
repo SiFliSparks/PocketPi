@@ -6,6 +6,13 @@
 
 #include "log.h"
 
+
+
+
+
+
+
+
 #ifdef ROW_OFFSET_PLUS
     #define ROW_OFFSET  (ROW_OFFSET_PLUS)
 #else
@@ -20,8 +27,8 @@
 /**
   * @brief  st7789_dbi Size
   */
-#define  THE_LCD_PIXEL_WIDTH    ((uint16_t)240)
-#define  THE_LCD_PIXEL_HEIGHT   ((uint16_t)320)
+#define  THE_LCD_PIXEL_WIDTH    ((uint16_t)320)
+#define  THE_LCD_PIXEL_HEIGHT   ((uint16_t)240)
 
 /**
   * @brief  st7789_dbi Timing
@@ -60,6 +67,12 @@
 
 #define REG_WBRIGHT            0x51 /* Write brightness*/
 
+
+
+
+
+
+
 static bool te_enabled = true;
 
 void lcd_sync_control(bool en)
@@ -78,10 +91,15 @@ void lcd_sync_control(bool en)
 static void LCD_WriteReg(LCDC_HandleTypeDef *hlcdc, uint16_t LCD_Reg, uint8_t *Parameters, uint32_t NbParameters);
 static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8_t ReadSize);
 
+
+
+
+
+
 static LCDC_InitTypeDef lcdc_int_cfg =
 {
     .lcd_itf = LCDC_INTF_DBI_8BIT_B,
-    .freq = 2000000,
+    .freq = 24000000,
     .color_mode = LCDC_PIXEL_FORMAT_RGB565,
 
     .cfg = {
@@ -95,7 +113,14 @@ static LCDC_InitTypeDef lcdc_int_cfg =
 
 };
 
-#define CS_PA_x_PIN  31
+
+
+
+
+
+
+
+#define CS_PA_x_PIN  3
 #define LCD_BL_EN_PIN (96 + 3)       // GPIO_B03
 
 void st7789_dbi_CS_HOLD_LOW(void)
@@ -112,29 +137,31 @@ void st7789_dbi_CS_HOLD_LOW(void)
     // set sensor pin to high == power on sensor board
     HAL_GPIO_WritePin(gpio, CS_PA_x_PIN, (GPIO_PinState)0);
 
+
     HAL_PIN_Set(PAD_PA00 + CS_PA_x_PIN, GPIO_A0 + CS_PA_x_PIN, PIN_PULLDOWN, 1);
 }
 
 void BSP_GPIO_Set_BL(int pin, int val)
 {
-    GPIO_TypeDef *gpio = NULL;
-    if (pin < 96) gpio = hwp_gpio1;
-    else
-    {
-        gpio = hwp_gpio2;
-        pin -= 96;
-    }
-    GPIO_InitTypeDef GPIO_InitStruct;
+    // GPIO_TypeDef *gpio = NULL;
+    // if (pin < 96) gpio = hwp_gpio1;
+    // else
+    // {
+    //     gpio = hwp_gpio2;
+    //     pin -= 96;
+    // }
+    // GPIO_InitTypeDef GPIO_InitStruct;
 
-    // set sensor pin to output mode
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT;
-    GPIO_InitStruct.Pin = pin;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(gpio, &GPIO_InitStruct);
+    // // set sensor pin to output mode
+    // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT;
+    // GPIO_InitStruct.Pin = pin;
+    // GPIO_InitStruct.Pull = GPIO_NOPULL;
+    // HAL_GPIO_Init(gpio, &GPIO_InitStruct);
 
-    // set sensor pin to high == power on sensor board
-    HAL_GPIO_WritePin(gpio, pin, (GPIO_PinState)val);
+    // // set sensor pin to high == power on sensor board
+    // HAL_GPIO_WritePin(gpio, pin, (GPIO_PinState)val);
 }
+
 
 void st7789_dbi_CS_RELEASE(void)
 {
@@ -177,13 +204,15 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
         hlcdc->Init.cfg.spi.syn_mode = HAL_LCDC_SYNC_DISABLE;
     }
     HAL_LCDC_Init(hlcdc);
+    HAL_PIN_Set(PAD_PA00 + 41, LCDC1_8080_DIO5, PIN_PULLDOWN, 1);
+    HAL_PIN_Set(PAD_PA00 + 37, LCDC1_8080_DIO2, PIN_PULLDOWN, 1);
 
     BSP_LCD_Reset(1);
-    LCD_DRIVER_DELAY_MS(100);
+    LCD_DRIVER_DELAY_MS(1);
     BSP_LCD_Reset(0); // Reset LCD
-    LCD_DRIVER_DELAY_MS(100);
+    HAL_Delay_us(100);
     BSP_LCD_Reset(1);
-    LCD_DRIVER_DELAY_MS(100);
+    LCD_DRIVER_DELAY_MS(50);
 
     // remark
     // parameter[0] = 0x20;
@@ -194,8 +223,20 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     /* Wait for 120ms */
     LCD_DRIVER_DELAY_MS(120);
 
-    parameter[0] = 0x00;//A0
+    parameter[0] = 0x20;//A0
     LCD_WriteReg(hlcdc, 0x36, parameter, 1);
+    
+    parameter[0] = 0x00;
+    parameter[1] = 0x00;
+    parameter[2] = 0x00;
+    parameter[3] = 0xEF;
+    LCD_WriteReg(hlcdc, 0x2B, parameter, 4);
+
+    parameter[0] = 0x00;
+    parameter[1] = 0x00;
+    parameter[2] = 0x01;
+    parameter[3] = 0x3F;
+    LCD_WriteReg(hlcdc, 0x2A, parameter, 4);
 
     parameter[0] = 0x05;
     LCD_WriteReg(hlcdc, 0x3A, parameter, 1);
@@ -207,19 +248,19 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[4] = 0x33;
     LCD_WriteReg(hlcdc, 0xB2, parameter, 5);
 
-    parameter[0] = 0x35;
+    parameter[0] = 0x56;
     LCD_WriteReg(hlcdc, 0xB7, parameter, 1);
 
-    parameter[0] = 0x19;
+    parameter[0] = 0x20;
     LCD_WriteReg(hlcdc, 0xBB, parameter, 1);
 
-    parameter[0] = 0x2c;
+    parameter[0] = 0x20;
     LCD_WriteReg(hlcdc, 0xC0, parameter, 1);
 
     parameter[0] = 0x01;
     LCD_WriteReg(hlcdc, 0xC2, parameter, 1);
 
-    parameter[0] = 0x12;
+    parameter[0] = 0x0F;
     LCD_WriteReg(hlcdc, 0xC3, parameter, 1);
 
     parameter[0] = 0x20;
@@ -232,39 +273,39 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[1] = 0xA1;
     LCD_WriteReg(hlcdc, 0xD0, parameter, 2);
 
-    // parameter[0] = 0xA1;
-    // LCD_WriteReg(hlcdc, 0xD6, parameter, 1);
+    parameter[0] = 0xA1;
+    LCD_WriteReg(hlcdc, 0xD6, parameter, 1);
 
-    parameter[0] = 0xD0;
-    parameter[1] = 0x04;
-    parameter[2] = 0x0D;
-    parameter[3] = 0x11;
-    parameter[4] = 0x13;
-    parameter[5] = 0x2B;
-    parameter[6] = 0x3F;
-    parameter[7] = 0x54;
-    parameter[8] = 0x4C;
-    parameter[9] = 0x18;
-    parameter[10] = 0x0D;
-    parameter[11] = 0x0B;
-    parameter[12] = 0x1F;
-    parameter[13] = 0x23;
+    parameter[0] = 0xF0;
+    parameter[1] = 0x00;
+    parameter[2] = 0x06;
+    parameter[3] = 0x06;
+    parameter[4] = 0x07;
+    parameter[5] = 0x05;
+    parameter[6] = 0x30;
+    parameter[7] = 0x44;
+    parameter[8] = 0x48;
+    parameter[9] = 0x38;
+    parameter[10] = 0x11;
+    parameter[11] = 0x10;
+    parameter[12] = 0x2E;
+    parameter[13] = 0x34;
     LCD_WriteReg(hlcdc, 0xE0, parameter, 14);
 
-    parameter[0] = 0xD0;
-    parameter[1] = 0x04;
-    parameter[2] = 0x0C;
-    parameter[3] = 0x11;
-    parameter[4] = 0x13;
-    parameter[5] = 0x2C;
-    parameter[6] = 0x3F;
+    parameter[0] = 0xF0;
+    parameter[1] = 0x0A;
+    parameter[2] = 0x0E;
+    parameter[3] = 0x0D;
+    parameter[4] = 0x0B;
+    parameter[5] = 0x27;
+    parameter[6] = 0x2F;
     parameter[7] = 0x44;
-    parameter[8] = 0x51;
-    parameter[9] = 0x2F;
-    parameter[10] = 0x1F;
-    parameter[11] = 0x1F;
-    parameter[12] = 0x20;
-    parameter[13] = 0x23;
+    parameter[8] = 0x47;
+    parameter[9] = 0x35;
+    parameter[10] = 0x12;
+    parameter[11] = 0x12;
+    parameter[12] = 0x2C;
+    parameter[13] = 0x32;
     LCD_WriteReg(hlcdc, 0xE1, parameter, 14);
 
     parameter[0] = 0x00;
@@ -282,13 +323,13 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[3] = 0x3F;
     LCD_WriteReg(hlcdc, 0x2A, parameter, 4);
 #endif
-    LCD_WriteReg(hlcdc, 0x20, (uint8_t *)NULL, 0);
+    LCD_WriteReg(hlcdc, 0x21, (uint8_t *)NULL, 0);
     /* clear gram */
     HAL_LCDC_Next_Frame_TE(hlcdc, 0);
     HAL_LCDC_SetROIArea(hlcdc, 0, 0, THE_LCD_PIXEL_WIDTH - 1, THE_LCD_PIXEL_HEIGHT - 1);
     HAL_LCDC_LayerSetFormat(hlcdc, HAL_LCDC_LAYER_DEFAULT, LCDC_PIXEL_FORMAT_RGB565);
     HAL_LCDC_LayerDisable(hlcdc, HAL_LCDC_LAYER_DEFAULT);
-    HAL_LCDC_SetBgColor(hlcdc, 255, 0, 0);
+    HAL_LCDC_SetBgColor(hlcdc, 0, 0, 0);
     HAL_LCDC_SendLayerData2Reg(hlcdc, REG_WRITE_RAM, 1);
     HAL_LCDC_LayerEnable(hlcdc, HAL_LCDC_LAYER_DEFAULT);
     LCD_WriteReg(hlcdc, 0x29, (uint8_t *)NULL, 0);
@@ -313,7 +354,7 @@ static void LCD_DisplayOn(LCDC_HandleTypeDef *hlcdc)
 {
     /* Display On */
     LCD_WriteReg(hlcdc, REG_DISPLAY_ON, (uint8_t *)NULL, 0);
-    // BSP_GPIO_Set_BL(LCD_BL_EN_PIN, 1);
+    BSP_GPIO_Set_BL(LCD_BL_EN_PIN, 1);
 }
 
 /**
@@ -324,7 +365,7 @@ static void LCD_DisplayOn(LCDC_HandleTypeDef *hlcdc)
 static void LCD_DisplayOff(LCDC_HandleTypeDef *hlcdc)
 {
     /* Display Off */
-    // BSP_GPIO_Set_BL(LCD_BL_EN_PIN, 0);
+    BSP_GPIO_Set_BL(LCD_BL_EN_PIN, 0);
     LCD_WriteReg(hlcdc, REG_DISPLAY_OFF, (uint8_t *)NULL, 0);
     LCD_WriteReg(hlcdc, REG_SLEEP_IN, (uint8_t *)NULL, 0);
     LCD_DRIVER_DELAY_MS(50);
@@ -332,46 +373,7 @@ static void LCD_DisplayOff(LCDC_HandleTypeDef *hlcdc)
 
 static void LCD_SetRegion(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos0, uint16_t Ypos0, uint16_t Xpos1, uint16_t Ypos1)
 {
-    uint16_t xs = Xpos0;
-    uint16_t xe = Xpos1;
-    uint16_t ys = Ypos0;
-    uint16_t ye = Ypos1;
-    uint32_t tmp;
-    uint8_t param[4];
 
-    /* normalize coordinates (ensure start <= end) */
-    if (xs > xe)
-    {
-        tmp = xs; xs = xe; xe = (uint16_t)tmp;
-    }
-    if (ys > ye)
-    {
-        tmp = ys; ys = ye; ye = (uint16_t)tmp;
-    }
-
-    /* clamp to display bounds */
-    if (xs >= THE_LCD_PIXEL_WIDTH) xs = THE_LCD_PIXEL_WIDTH - 1;
-    if (xe >= THE_LCD_PIXEL_WIDTH) xe = THE_LCD_PIXEL_WIDTH - 1;
-
-    /* apply row offset if defined and clamp */
-    uint32_t ys_off = (uint32_t)ys + (uint32_t)ROW_OFFSET;
-    uint32_t ye_off = (uint32_t)ye + (uint32_t)ROW_OFFSET;
-    if (ys_off >= (uint32_t)THE_LCD_PIXEL_HEIGHT + (uint32_t)ROW_OFFSET) ys_off = (uint32_t)THE_LCD_PIXEL_HEIGHT - 1 + (uint32_t)ROW_OFFSET;
-    if (ye_off >= (uint32_t)THE_LCD_PIXEL_HEIGHT + (uint32_t)ROW_OFFSET) ye_off = (uint32_t)THE_LCD_PIXEL_HEIGHT - 1 + (uint32_t)ROW_OFFSET;
-
-    /* Column address set: REG_CASET, send MSB then LSB for start and end */
-    param[0] = (uint8_t)((xs >> 8) & 0xFF);
-    param[1] = (uint8_t)(xs & 0xFF);
-    param[2] = (uint8_t)((xe >> 8) & 0xFF);
-    param[3] = (uint8_t)(xe & 0xFF);
-    LCD_WriteReg(hlcdc, REG_CASET, param, 4);
-
-    /* Row address set: REG_RASET */
-    param[0] = (uint8_t)((ys_off >> 8) & 0xFF);
-    param[1] = (uint8_t)(ys_off & 0xFF);
-    param[2] = (uint8_t)((ye_off >> 8) & 0xFF);
-    param[3] = (uint8_t)(ye_off & 0xFF);
-    LCD_WriteReg(hlcdc, REG_RASET, param, 4);
 }
 
 /**
@@ -397,16 +399,19 @@ void HAL_LCDC_SendLayerDataCpltCbk(LCDC_HandleTypeDef *lcdc)
 static void LCD_WriteMultiplePixels(LCDC_HandleTypeDef *hlcdc, const uint8_t *RGBCode, uint16_t Xpos0, uint16_t Ypos0, uint16_t Xpos1, uint16_t Ypos1)
 {
 
-    uint32_t v =  LCD_ReadData(hlcdc, REG_POWER_MODE, 2);
-    //LOG_I("0x0A=%x", v);
-    v =  LCD_ReadData(hlcdc, 0x04, 2);
-    //LOG_I("0x04=%x", v);
+    // uint32_t v =  LCD_ReadData(hlcdc, REG_POWER_MODE, 2);
+    // //LOG_I("0x0A=%x", v);
+    // v =  LCD_ReadData(hlcdc, 0x04, 2);
+    // //LOG_I("0x04=%x", v);
+
 
     st7789_dbi_CS_HOLD_LOW();
     HAL_LCDC_LayerSetData(hlcdc, HAL_LCDC_LAYER_DEFAULT, (uint8_t *)RGBCode, Xpos0, Ypos0, Xpos1, Ypos1);
     HAL_LCDC_SendLayerData2Reg_IT(hlcdc, REG_WRITE_RAM, 1);
 
 }
+
+
 
 /**
   * @brief  Writes  to the selected LCD register.
@@ -419,6 +424,7 @@ static void LCD_WriteReg(LCDC_HandleTypeDef *hlcdc, uint16_t LCD_Reg, uint8_t *P
     HAL_LCDC_WriteU8Reg(hlcdc, LCD_Reg, Parameters, NbParameters);
     st7789_dbi_CS_RELEASE();
 }
+
 
 /**
   * @brief  Reads the selected LCD Register.
@@ -439,6 +445,8 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 
     return rd_data;
 }
+
+
 
 static uint32_t LCD_ReadPixel(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos, uint16_t Ypos)
 {
@@ -487,10 +495,12 @@ static uint32_t LCD_ReadPixel(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos, uint16_t
 
     //rt_kprintf("st7789_dbi_ReadPixel %x -> %x\n",c, ret_v);
 
+
     LCD_WriteReg(hlcdc, REG_COLOR_MODE, parameter, 1);
 
     return ret_v;
 }
+
 
 static void LCD_SetColorMode(LCDC_HandleTypeDef *hlcdc, uint16_t color_mode)
 {
@@ -521,50 +531,17 @@ static void LCD_SetColorMode(LCDC_HandleTypeDef *hlcdc, uint16_t color_mode)
 
 static void LCD_SetBrightness(LCDC_HandleTypeDef *hlcdc, uint8_t br)
 {
-    uint8_t bright = (uint8_t)((uint16_t)UINT8_MAX * br / 100); // ???
-    LCD_WriteReg(hlcdc, REG_WBRIGHT, &bright, 1);
-}
-
-static void LCD_Rotate(LCDC_HandleTypeDef *hlcdc, LCD_DrvRotateTypeDef rot)
-{
-    uint8_t madctl = 0x00;
-    /* ST7789 MADCTL bits: MY MX MV ML RGB */
-    switch (rot)
-    {
-    case LCD_ROTATE_0_DEGREE:
-        madctl = 0x00; /* default */
-        break;
-    case LCD_ROTATE_90_DEGREE:
-        madctl = 0x60; /* MV | MX */
-        break;
-    case LCD_ROTATE_180_DEGREE:
-        madctl = 0xC0; /* MX | MY */
-        break;
-    case LCD_ROTATE_270_DEGREE:
-        madctl = 0x20; /* MV | MY */
-        break;
-    default:
-        return;
-    }
-
-    /* write MADCTL */
-    uint8_t param[1] = { madctl };
-    LCD_WriteReg(hlcdc, 0x36, param, 1);
-
-    /* Update HAL layer/ROI to full screen with possible swapped dims */
-    if ((rot == LCD_ROTATE_90_DEGREE) || (rot == LCD_ROTATE_270_DEGREE))
-    {
-        HAL_LCDC_SetROIArea(hlcdc, 0, 0, THE_LCD_PIXEL_HEIGHT - 1, THE_LCD_PIXEL_WIDTH - 1);
-    }
-    else
-    {
-        HAL_LCDC_SetROIArea(hlcdc, 0, 0, THE_LCD_PIXEL_WIDTH - 1, THE_LCD_PIXEL_HEIGHT - 1);
-    }
+    uint8_t bright = (uint8_t)((uint16_t)UINT8_MAX * br / 100);
+    LCD_WriteReg(hlcdc, REG_WBRIGHT, &br, 1);
 }
 
 /*****************************************************************************/
 
-static const LCD_DrvOpsDef st7789_8080_drv =
+
+
+
+
+static const LCD_DrvOpsDef st7789_dbi_drv =
 {
     LCD_Init,
     LCD_ReadID,
@@ -580,13 +557,16 @@ static const LCD_DrvOpsDef st7789_8080_drv =
     LCD_SetColorMode,
     LCD_SetBrightness,
     NULL,
-    NULL,
-    LCD_Rotate,
-    NULL,
     NULL
 
 };
 
-LCD_DRIVER_EXPORT2(st7789_8080, THE_LCD_ID, &lcdc_int_cfg,
-                   &st7789_8080_drv, 1);
+LCD_DRIVER_EXPORT2(st7789_dbi, THE_LCD_ID, &lcdc_int_cfg,
+                   &st7789_dbi_drv, 1);
 
+
+
+
+
+
+/************************ (C) COPYRIGHT Sifli Technology *******END OF FILE****/

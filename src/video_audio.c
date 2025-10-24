@@ -428,8 +428,8 @@ static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
         {
             uint16_t pixel = myPalette[bmp->line[0][y*256+x]];
             pixel = (pixel >> 8) | ((pixel & 0xff) << 8);
-            // ((uint16_t *)lcdfb)[y*256+x] = (pixel);
-            ((uint16_t *)lcdfb)[224*(256-x-1)+y] = (pixel); //rotate -90
+            ((uint16_t *)lcdfb)[y*256+x] = (pixel);
+            // ((uint16_t *)lcdfb)[224*(256-x-1)+y] = (pixel); //rotate -90
         }
     }
     // printf("look up end: %d\n",(int)rt_tick_get());
@@ -697,14 +697,14 @@ int osd_init()
     }
     key_init();
     nes_img_dsc.header.always_zero = 0;
-    nes_img_dsc.header.w = 224;
-    nes_img_dsc.header.h = 256;
+    nes_img_dsc.header.w = 256;
+    nes_img_dsc.header.h = 224;
     nes_img_dsc.data_size = 224 * 256 * 2;
     nes_img_dsc.header.cf = LV_COLOR_FORMAT_NATIVE; 
     nes_img_dsc.data = (const uint8_t *)lcdfb;
 
     nes_img_obj = lv_img_create(lv_scr_act()); 
-    lv_img_set_zoom(nes_img_obj, 450); // 
+    lv_img_set_zoom(nes_img_obj, 256); // 
     lv_img_set_src(nes_img_obj, &nes_img_dsc); // 设置图像数据源
     lv_obj_align(nes_img_obj, LV_ALIGN_CENTER, 0, 0); // 居中显示，你可以调整位置和大小
 
