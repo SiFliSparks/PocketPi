@@ -407,7 +407,7 @@ int main(void)
         uint8_t buf[2];
 
         /* 配置 P0 IO 模式寄存器 0x04 = 0x3F */
-        buf[0] = 0x04; buf[1] = 0x3F;
+        buf[0] = 0x04; buf[1] = 0xFF;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
         // rt_i2c_mem_write(i2c_bus, dev_addr, 0x04, 8, &buf[1], 1);
 
@@ -416,18 +416,12 @@ int main(void)
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
 
         /* 配置全局寄存器 0x11 = 0x03 */
-        buf[0] = 0x11; buf[1] = 0x02;
+        buf[0] = 0x11; buf[1] = 0x03;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
 
         /* 配置 LED 模式寄存器 0x13 = 0x1F */
         buf[0] = 0x13; buf[1] = 0xF8;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-
-        /* 默认耳机静音寄存器 0x02 = 0x7F */
-        buf[0] = 0x02; buf[1] = 0x7F;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-
-        rt_thread_mdelay(1000);
         
         buf[0] = 0x20; buf[1] = 0xFF;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
@@ -435,15 +429,31 @@ int main(void)
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
         buf[0] = 0x22; buf[1] = 0xFF;
         rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-        buf[0] = 0x23; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
     }
-        nes_thread = rt_thread_create("nes_launcher",
-        (void(*)(void*))emu_thread_entry, (void*)"a.nes",
-        16384, 21, 100);
+    nes_thread = rt_thread_create("nes_launcher",
+    (void(*)(void*))emu_thread_entry, (void*)"7100324.nes",
+    16384, 21, 100);
     if (nes_thread != NULL) {
         rt_thread_startup(nes_thread);
     }
+    // while(1)
+    // {
+    // HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
+    // HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
+    // HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
+    //     uint16_t port_data = 0;
+    //     uint8_t buf[2];
+    //     buf[0] = 0x00; buf[1] = 0;
+    //     rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    //     rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    //     port_data |= buf[1];
+    //     buf[0] = 0x01; buf[1] = 0;
+    //     rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    //     rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    //     port_data |= (buf[1] << 8);
+    //     rt_kprintf("port data: 0x%04X\n", port_data);
+    //     rt_thread_mdelay(10);
+    // }
     while (1)
     {
         if(nes_thread == RT_NULL)

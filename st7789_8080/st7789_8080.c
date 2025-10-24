@@ -99,12 +99,12 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 static LCDC_InitTypeDef lcdc_int_cfg =
 {
     .lcd_itf = LCDC_INTF_DBI_8BIT_B,
-    .freq = 24000000,
+    .freq = 20000000,
     .color_mode = LCDC_PIXEL_FORMAT_RGB565,
 
     .cfg = {
         .dbi = {
-            .syn_mode = HAL_LCDC_SYNC_DISABLE,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
+            .syn_mode = HAL_LCDC_SYNC_VER,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
             .vsyn_polarity = 0,
             .vsyn_delay_us = 0,
             .hsyn_num = 0,
