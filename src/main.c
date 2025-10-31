@@ -273,7 +273,30 @@ void delete_nes_thread(void)
 }
 MSH_CMD_EXPORT(delete_nes_thread, delete nes thread);
 
+// 临时使用
 static struct rt_i2c_bus_device *i2c_bus = NULL;
+uint16_t get_aw9523_input()
+{
+    
+    HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
+    HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
+    HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
+    uint16_t port_data = 0;
+    uint8_t buf[2];
+    buf[0] = 0x00; buf[1] = 0;
+    rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    port_data |= buf[1];
+    buf[0] = 0x01; buf[1] = 0;
+    rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    port_data |= (buf[1] << 8);
+    return port_data;
+    // rt_kprintf("port data: 0x%04X\n", port_data);
+    // rt_thread_mdelay(10);
+}
+
+
 /**
  * @brief  Main program
  * @param  None

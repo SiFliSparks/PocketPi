@@ -99,7 +99,7 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 static LCDC_InitTypeDef lcdc_int_cfg =
 {
     .lcd_itf = LCDC_INTF_DBI_8BIT_B,
-    .freq = 20000000,
+    .freq = 24000000,
     .color_mode = LCDC_PIXEL_FORMAT_RGB565,
 
     .cfg = {
@@ -199,10 +199,10 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
 
     /* Initialize st7789_dbi low level bus layer ----------------------------------*/
     memcpy(&hlcdc->Init, &lcdc_int_cfg, sizeof(LCDC_InitTypeDef));
-    if (!te_enabled)
-    {
-        hlcdc->Init.cfg.spi.syn_mode = HAL_LCDC_SYNC_DISABLE;
-    }
+    // if (!te_enabled)
+    // {
+    //     hlcdc->Init.cfg.spi.syn_mode = HAL_LCDC_SYNC_DISABLE;
+    // }
     HAL_LCDC_Init(hlcdc);
     HAL_PIN_Set(PAD_PA00 + 41, LCDC1_8080_DIO5, PIN_PULLDOWN, 1);
     HAL_PIN_Set(PAD_PA00 + 37, LCDC1_8080_DIO2, PIN_PULLDOWN, 1);
@@ -223,7 +223,7 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     /* Wait for 120ms */
     LCD_DRIVER_DELAY_MS(120);
 
-    parameter[0] = 0x20;//A0
+    parameter[0] = 0x30;//A0
     LCD_WriteReg(hlcdc, 0x36, parameter, 1);
     
     parameter[0] = 0x00;

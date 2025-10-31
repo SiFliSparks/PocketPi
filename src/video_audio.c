@@ -523,96 +523,166 @@ void tev(int argc, char **argv)
 }
 MSH_CMD_EXPORT(tev, trigger event by id e.g: tev 1);
 
+extern uint16_t get_aw9523_input();
 int selectedSlot = 0;
 static int ConvertGamepadInput()
 {
     int result = 0;
 
-    if(get_key_state(0) && get_key_press_event(5))
+    uint16_t aw_input = ~get_aw9523_input();
+
+    if(aw_input & (1 << 0)) // a
     {
-        if(audio_shift_bits > 1) audio_shift_bits--;
-    }
-    if(get_key_state(0) && get_key_press_event(8))
-    {
-        if(audio_shift_bits < 16) audio_shift_bits++;
+        result |= (1 << 13);
     }
 
-    if(get_key_state(0) && get_key_press_event(7))
+    if(aw_input & (1 << 1)) // x
     {
-        selectedSlot--;
-        if(selectedSlot < 0) selectedSlot = 9;
-        rt_kprintf("State slot: %d\n",selectedSlot);
-        state_setslot(selectedSlot);
+        // this button is unused
     }
 
-    if(get_key_state(0) && get_key_press_event(6))
+    if(aw_input & (1 << 2)) // b
     {
-        selectedSlot++;
-        if(selectedSlot > 9) selectedSlot = 0;
-        rt_kprintf("State slot: %d\n",selectedSlot);
-        state_setslot(selectedSlot);
+        result |= (1 << 14);
     }
 
-    if(get_key_state(0)&& get_key_press_event(4))
+    if(aw_input & (1 << 3)) // y
     {
-        state_save();
+        // this button is unused
     }
 
-    if(get_key_state(0)&& get_key_press_event(3))
+    if(aw_input & (1 << 4)) // start
     {
-        state_load();
+        result |= (1 << 3);
     }
 
-    if(get_key_state(0)&& get_key_press_event(2))
+    if(aw_input & (1 << 5)) // select
     {
-        trigger_quit();
+        result |= (1 << 0);
     }
 
-    if(get_key_state(0))
+    if(aw_input & (1 << 6)) // menu
     {
-        result |= (1 << 0); // select
+        // this button is unused
+    }
+    
+    if(aw_input & (1 << 7)) // down
+    {
+        result |= (1 << 6);
+    }
+    
+    // no 8-10
+
+    if(aw_input & (1 << 11)) // r
+    {
+        // this button is unused
     }
 
-    // if(get_key_state(1))
+    if(aw_input & (1 << 12)) // left
+    {
+        result |= (1 << 7);
+    }
+    
+    if(aw_input & (1 << 13)) // up
+    {
+        result |= (1 << 4);
+    }
+
+    if(aw_input & (1 << 14)) // right
+    {
+        result |= (1 << 5);
+    }
+
+    if(aw_input & (1 << 15)) // l
+    {
+        // this button is unused
+    }
+
+    // if(get_key_state(0) && get_key_press_event(5))
     // {
-    //     result |= (1 << 3); // menu
+    //     if(audio_shift_bits > 1) audio_shift_bits--;
+    // }
+    // if(get_key_state(0) && get_key_press_event(8))
+    // {
+    //     if(audio_shift_bits < 16) audio_shift_bits++;
     // }
 
-    if(get_key_state(2))
-    {
-        result |= (1 << 3); // start
-    }
+    // if(get_key_state(0) && get_key_press_event(7))
+    // {
+    //     selectedSlot--;
+    //     if(selectedSlot < 0) selectedSlot = 9;
+    //     rt_kprintf("State slot: %d\n",selectedSlot);
+    //     state_setslot(selectedSlot);
+    // }
 
-    if(get_key_state(3))
-    {
-        result |= (1 << 14); // b
-    }
+    // if(get_key_state(0) && get_key_press_event(6))
+    // {
+    //     selectedSlot++;
+    //     if(selectedSlot > 9) selectedSlot = 0;
+    //     rt_kprintf("State slot: %d\n",selectedSlot);
+    //     state_setslot(selectedSlot);
+    // }
 
-    if(get_key_state(4))
-    {
-        result |= (1 << 13); // a
-    }
+    // if(get_key_state(0)&& get_key_press_event(4))
+    // {
+    //     state_save();
+    // }
 
-    if(get_key_state(5))
-    {
-        result |= (1 << 4); // up
-    }
+    // if(get_key_state(0)&& get_key_press_event(3))
+    // {
+    //     state_load();
+    // }
 
-    if(get_key_state(6))
-    {
-        result |= (1 << 5); // right
-    }
+    // if(get_key_state(0)&& get_key_press_event(2))
+    // {
+    //     trigger_quit();
+    // }
 
-    if(get_key_state(7))
-    {
-        result |= (1 << 7); // left
-    }
+    // if(get_key_state(0))
+    // {
+    //     result |= (1 << 0); // select
+    // }
 
-    if(get_key_state(8))
-    {
-        result |= (1 << 6); // down
-    }
+    // // if(get_key_state(1))
+    // // {
+    // //     result |= (1 << 3); // menu
+    // // }
 
+    // if(get_key_state(2))
+    // {
+    //     result |= (1 << 3); // start
+    // }
+
+    // if(get_key_state(3))
+    // {
+    //     result |= (1 << 14); // b
+    // }
+
+    // if(get_key_state(4))
+    // {
+    //     result |= (1 << 13); // a
+    // }
+
+    // if(get_key_state(5))
+    // {
+    //     result |= (1 << 4); // up
+    // }
+
+    // if(get_key_state(6))
+    // {
+    //     result |= (1 << 5); // right
+    // }
+
+    // if(get_key_state(7))
+    // {
+    //     result |= (1 << 7); // left
+    // }
+
+    // if(get_key_state(8))
+    // {
+    //     result |= (1 << 6); // down
+    // }
+    
     return result;
 }
 
