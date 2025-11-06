@@ -12,45 +12,17 @@
 #endif
 #include "drv_flash.h"
 #include <drivers/audio.h>
+#include "input.h"
+#include "audio.h"
 
+LV_FONT_DECLARE(nmdws_16);
 
 const char *framebuffer = (const char *)PSRAM_BASE+0x400000;
 rt_device_t lcd_device;
-rt_event_t g_tx_ev;
-rt_device_t audprc_dev;
-rt_device_t audcodec_dev;
 const char supported_extensions[][4] = {
     "nes",
     "NES"
 };
-
-LV_FONT_DECLARE(nmdws_16);
-
-static rt_err_t speaker_tx_done(rt_device_t dev, void *buffer)
-{
-    //此函数在发送一帧完成的dma中断里，表示发送一次完成
-    rt_event_send(g_tx_ev, 1);
-    return RT_EOK;
-}
-#define DMA_BUF_SIZE    (256*2)
-
-// ring buffer for audio samples (implemented in video_audio.c)
-extern int audio_ring_get_buffered();
-extern void audio_ring_buffer_put(int16_t* samples, uint32_t shift_bits, int length);
-extern void audio_ring_buffer_get(int16_t* samples, int length);
-
-rt_thread_t audio_thread = RT_NULL;
-static void audio_thread_entry(void *parameter)
-{
-    int16_t audio_temp_buffer[DMA_BUF_SIZE];
-    while (1)
-    {
-        audio_ring_buffer_get(audio_temp_buffer, DMA_BUF_SIZE/2);
-        uint32_t evt = 0;
-        rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
-        rt_device_write(audprc_dev, 0, audio_temp_buffer, DMA_BUF_SIZE);
-    }
-}
 
 #ifndef FS_REGION_START_ADDR
     #error "Need to define file system start address!"
@@ -111,6 +83,42 @@ extern lv_img_dsc_t nes_img_dsc; // LVGL 图像描述符
 extern lv_obj_t * nes_img_obj; // LVGL 图像对象
 int nofrendo_main(int argc, char *argv[]);
 
+lv_group_t * g;
+lv_indev_t * indev;
+
+void keyboard_read(lv_indev_t * indev, lv_indev_data_t * data) {
+    uint16_t state = input_get_state();
+    // rt_kprintf("key state: 0x%04X\n", state);
+    if(!(state&0x80))
+    {
+        data->key = LV_KEY_NEXT;
+        data->state = LV_INDEV_STATE_PRESSED;
+        return;
+    }
+    // else{
+    //     data->key = LV_KEY_NEXT;
+    //     data->state = LV_INDEV_STATE_RELEASED;
+    //     return;
+    // }
+    if(!(state&0x01))
+    {
+        data->key = LV_KEY_ENTER;
+        data->state = LV_INDEV_STATE_PRESSED;
+        return;
+    }
+    // else{
+    //     data->key = LV_KEY_ENTER;
+    //     data->state = LV_INDEV_STATE_RELEASED;
+    //     return;
+    // }
+//   if(key_pressed()) {
+//      data->key = my_last_key();            /* Get the last pressed or released key */
+//      data->state = LV_INDEV_STATE_PRESSED;
+//   } else {
+//      data->state = LV_INDEV_STATE_RELEASED;
+//   }
+}
+
 void key_deinit();
 rt_thread_t nes_thread = RT_NULL;
 lv_obj_t * cont;
@@ -120,6 +128,8 @@ void emu_thread_entry(void *parameter)
     char* filename = parameter;//"mario.nes";
 
     char* args[1] = { filename };
+
+    rt_thread_mdelay(2000); // wait for lvgl ready
 
     nofrendo_main(1,args);
 
@@ -219,7 +229,7 @@ int extension_filter(const char *ext)
 void list_init(void)
 {
     cont = lv_obj_create(lv_screen_active());
-    lv_obj_set_size(cont, 240, 320);
+    lv_obj_set_size(cont, 320, 240);
     lv_obj_center(cont);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_add_event_cb(cont, scroll_event_cb, LV_EVENT_SCROLL, NULL);
@@ -247,6 +257,7 @@ void list_init(void)
             continue;
         }
         lv_obj_t * btn = lv_button_create(cont);
+        lv_group_add_obj(g, btn);
         lv_obj_set_width(btn, lv_pct(60));
 
     lv_obj_t * label = lv_label_create(btn);
@@ -278,20 +289,20 @@ static struct rt_i2c_bus_device *i2c_bus = NULL;
 uint16_t get_aw9523_input()
 {
     
-    HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
-    HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
-    HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
-    uint16_t port_data = 0;
-    uint8_t buf[2];
-    buf[0] = 0x00; buf[1] = 0;
-    rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    port_data |= buf[1];
-    buf[0] = 0x01; buf[1] = 0;
-    rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    port_data |= (buf[1] << 8);
-    return port_data;
+    // HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
+    // HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
+    // HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
+    // uint16_t port_data = 0;
+    // uint8_t buf[2];
+    // buf[0] = 0x00; buf[1] = 0;
+    // rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    // rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    // port_data |= buf[1];
+    // buf[0] = 0x01; buf[1] = 0;
+    // rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
+    // rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
+    // port_data |= (buf[1] << 8);
+    // return port_data;
     // rt_kprintf("port data: 0x%04X\n", port_data);
     // rt_thread_mdelay(10);
 }
@@ -321,162 +332,23 @@ int main(void)
         return ret;
     }
 
-    // 初始化音频
-    g_tx_ev = rt_event_create("audio_tx_evt", RT_IPC_FLAG_FIFO);
-    //1. 打开设备
-    // int err;
-    audprc_dev = rt_device_find("audprc");
-    audcodec_dev = rt_device_find("audcodec");
-    RT_ASSERT(audprc_dev && audcodec_dev);
+    // TODO: 替换成分离到 audio.c 的接口
 
-    err = rt_device_open(audprc_dev, RT_DEVICE_FLAG_RDWR);
-    RT_ASSERT(RT_EOK == err);
-    err = rt_device_open(audcodec_dev, RT_DEVICE_FLAG_WRONLY);
-    RT_ASSERT(RT_EOK == err);
-
-    //2. 设置发送完成的回到函数
-    rt_device_set_tx_complete(audprc_dev, speaker_tx_done);
-    
-    //3. 设置一次DMA buffer的大小，底层驱动里会使用2个这样的DMA buffer做ping/pong buffer
-    rt_device_control(audprc_dev, AUDIO_CTL_SET_TX_DMA_SIZE, (void *)DMA_BUF_SIZE);
-
-    //4. 音频输出到CODEC, 如果到I2S，可以设置AUDPRC_TX_TO_I2S
-    rt_device_control(audcodec_dev, AUDIO_CTL_SETOUTPUT, (void *)AUDPRC_TX_TO_CODEC);
-    rt_device_control(audprc_dev,   AUDIO_CTL_SETOUTPUT, (void *)AUDPRC_TX_TO_CODEC);
-    
-    //5. 设置codec参数
-    struct rt_audio_caps caps;
-
-    caps.main_type = AUDIO_TYPE_OUTPUT;
-    caps.sub_type = (1 << HAL_AUDCODEC_DAC_CH0);
-#if BSP_ENABLE_DAC2
-    caps.sub_type |= (1 << HAL_AUDCODEC_DAC_CH1);
-#endif
-    caps.udata.config.channels   = 1; //最后的输出为一个声道
-    caps.udata.config.samplerate = 32000; //采样率, 8000/11025/12000/16000/22050/24000/32000/44100/48000
-    caps.udata.config.samplefmt = 16; //位深度8 16 24 or 32
-    rt_device_control(audcodec_dev, AUDIO_CTL_CONFIGURE, &caps);
-    
-    struct rt_audio_sr_convert cfg;
-    cfg.channel = 1; //源数据的通道个数，如果是2，则数据传入的格式位LRLRLR....的interleave格式
-    cfg.source_sr = 32000; //源数据的采样率
-    cfg.dest_sr = 32000;   //播放时的采样率  
-    rt_device_control(audprc_dev, AUDIO_CTL_OUTPUTSRC, (void *)(&cfg));
-
-    //数据选择，一路源数据就这样配置就行了，多路源数据的处理参考《音频通路mix&mux功能说明.docx》
-    caps.main_type = AUDIO_TYPE_SELECTOR;
-    caps.sub_type = 0xFF;
-    caps.udata.value = 0x5050;
-    rt_device_control(audprc_dev, AUDIO_CTL_CONFIGURE, &caps);
-    caps.main_type = AUDIO_TYPE_MIXER;
-    caps.sub_type = 0xFF;
-    caps.udata.value   = 0x5050;
-    rt_device_control(audprc_dev, AUDIO_CTL_CONFIGURE, &caps);
-
-    //源数据格式说明
-    caps.main_type = AUDIO_TYPE_OUTPUT;
-    caps.sub_type = HAL_AUDPRC_TX_CH0;
-    caps.udata.config.channels   = 1;
-    caps.udata.config.samplerate = 32000;
-    caps.udata.config.samplefmt = 16;
-    rt_device_control(audprc_dev, AUDIO_CTL_CONFIGURE, &caps);
-
-    //从EQ配置表中获得音量并设置到codec，vol_level为0 ~ 15
-    // uint8_t vol_level = 1;
-    // int volumex2 = eq_get_music_volumex2(vol_level);
-    // if (caps.udata.config.samplerate == 16000 || caps.udata.config.samplerate == 8000)
-    //    volumex2 = eq_get_tel_volumex2(vol_level);
-    // rt_device_control(audcodec_dev, AUDIO_CTL_SETVOLUME, (void *)vol_level);
-
-    //开始播放
-    int stream = AUDIO_STREAM_REPLAY | ((1 << HAL_AUDPRC_TX_CH0) << 8);
-    rt_device_control(audprc_dev, AUDIO_CTL_START, (void *)&stream);
-    stream = AUDIO_STREAM_REPLAY | ((1 << HAL_AUDCODEC_DAC_CH0) << 8);
-    rt_device_control(audcodec_dev, AUDIO_CTL_START, &stream);
-    rt_event_send(g_tx_ev, 1);
-    audio_thread = rt_thread_create("audio_thread",
-        audio_thread_entry, RT_NULL,
-        4096, 2, 10);
-    if (audio_thread != RT_NULL) rt_thread_startup(audio_thread);
-
-    // 初始化音频完成
-
-    // list_init();
-    /* Infinite loop */
-    
-    HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
-    HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
-    HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
-    i2c_bus = rt_i2c_bus_device_find("i2c1");
-    if(i2c_bus == RT_NULL)
-    {
-        rt_kprintf("i2c bus find failed!\n");
-        return -1;
-    }
-    rt_kprintf("i2c bus found.\n");
-    rt_device_open((rt_device_t)i2c_bus, RT_DEVICE_FLAG_RDWR);
-    struct rt_i2c_configuration configuration =
-    {
-        .mode = 0,
-        .addr = 0,
-        .timeout = 500, //Waiting for timeout period (ms)
-        .max_hz = 100000, //I2C rate (hz)
-    };
-    // config I2C parameter
-    rt_i2c_configure(i2c_bus, &configuration);
-    if(i2c_bus != RT_NULL)
-    {
-        rt_uint16_t dev_addr = 0x5B; /* TODO: 根据硬件调整地址 */
-        uint8_t buf[2];
-
-        /* 配置 P0 IO 模式寄存器 0x04 = 0x3F */
-        buf[0] = 0x04; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-        // rt_i2c_mem_write(i2c_bus, dev_addr, 0x04, 8, &buf[1], 1);
-
-        /* 配置 P1 IO 模式寄存器 0x05 = 0xFF */
-        buf[0] = 0x05; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-
-        /* 配置全局寄存器 0x11 = 0x03 */
-        buf[0] = 0x11; buf[1] = 0x03;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-
-        /* 配置 LED 模式寄存器 0x13 = 0x1F */
-        buf[0] = 0x13; buf[1] = 0xF8;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-        
-        buf[0] = 0x20; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-        buf[0] = 0x21; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-        buf[0] = 0x22; buf[1] = 0xFF;
-        rt_i2c_master_send(i2c_bus, dev_addr, RT_I2C_WR , buf, sizeof(buf));
-    }
-    nes_thread = rt_thread_create("nes_launcher",
-    (void(*)(void*))emu_thread_entry, (void*)"7100324.nes",
-    16384, 21, 100);
-    if (nes_thread != NULL) {
-        rt_thread_startup(nes_thread);
-    }
-    // while(1)
-    // {
-    // HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
-    // HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
-    // HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
-    //     uint16_t port_data = 0;
-    //     uint8_t buf[2];
-    //     buf[0] = 0x00; buf[1] = 0;
-    //     rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    //     rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    //     port_data |= buf[1];
-    //     buf[0] = 0x01; buf[1] = 0;
-    //     rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    //     rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    //     port_data |= (buf[1] << 8);
-    //     rt_kprintf("port data: 0x%04X\n", port_data);
-    //     rt_thread_mdelay(10);
+    input_init();
+    g = lv_group_create();
+    indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_KEYPAD);
+    lv_indev_set_read_cb(indev, keyboard_read);
+    lv_indev_set_group(indev, g);
+    list_init();    
+    // nes_thread = rt_thread_create("nes_launcher",
+    // (void(*)(void*))emu_thread_entry, (void*)"7100324.nes",
+    // 16384, 21, 100);
+    // if (nes_thread != NULL) {
+    //     rt_thread_startup(nes_thread);
     // }
+    /* Infinite loop */
+
     while (1)
     {
         if(nes_thread == RT_NULL)

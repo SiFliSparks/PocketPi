@@ -32,145 +32,42 @@
 #include "bf0_hal.h"
 #include "drv_io.h"
 
-#define hwp_gpio hwp_gpio1
-#define RCC_MOD_GPIO RCC_MOD_GPIO1
+// TODO: 改为使用aw9523的驱动
 
-int key_pin_def[]={
-    30,24,25,20,10,11,27,28,29
-};
-
-#define KEY_NUM (sizeof(key_pin_def) / sizeof(key_pin_def[0]))
-
-uint8_t key_buffer[KEY_NUM] = {0};
-uint32_t key_state = 0;
-uint32_t key_release_event = 0;
-uint32_t key_press_event = 0;
-
-rt_timer_t key_timer = NULL;
 void key_scan();
 void key_init()
 {
-    HAL_RCC_EnableModule(RCC_MOD_GPIO); // GPIO clock enable
-
-    GPIO_InitTypeDef GPIO_InitStruct;
-
-    for(int i=0;i<KEY_NUM;i++)
-    {
-        GPIO_InitStruct.Pin = key_pin_def[i];
-        GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        GPIO_InitStruct.Pull = GPIO_PULLUP;
-        HAL_GPIO_Init(hwp_gpio, &GPIO_InitStruct);
-        HAL_PIN_Set(PAD_PA00 + key_pin_def[i], GPIO_A0 + key_pin_def[i], PIN_PULLUP, 1);
-    }
-
-    key_timer = rt_timer_create(
-        "key_scan",                          // 定时器名称
-        (void (*)(void*))key_scan,          // 超时回调函数（需强制转换函数类型）
-        RT_NULL,                        // 回调函数参数
-        RT_TICK_PER_SECOND / 200, // 超时时间（tick数）
-        RT_TIMER_FLAG_PERIODIC          // 周期定时模式
-    );
-
-    if (key_timer != RT_NULL)
-    {
-        rt_timer_start(key_timer); // 启动定时器
-    }
+    //make compiler happy
 }
 
 void key_deinit()
 {
-    if (key_timer != RT_NULL)
-    {
-        rt_timer_stop(key_timer);
-        rt_timer_delete(key_timer);
-        key_timer = RT_NULL;
-    }
+    //make compiler happy
 }
 
 int get_key_state(int key_index)
 {
-    if (key_index < 0 || key_index >= KEY_NUM)
-        return 0;
-    return (key_state >> key_index) & 0x01;
+   //make compiler happy
 }
 
 void key_scan()
 {
-    for(int i=0;i<KEY_NUM;i++)
-    {
-        key_buffer[i]<<=1;
-        if(HAL_GPIO_ReadPin(hwp_gpio,key_pin_def[i])==GPIO_PIN_RESET)
-        {
-            key_buffer[i]|=0x01;
-        }
-        if(key_buffer[i]==0xff)
-        {
-            if(get_key_state(i)==0)
-            {
-                key_press_event|=1<<i;
-                key_release_event&=~(1<<i);
-            }
-            key_state|=1<<i;
-        }
-        if(key_buffer[i]==0x00)
-        {
-            if(get_key_state(i)==1)
-            {
-                key_release_event|=1<<i;
-                key_press_event&=~(1<<i);
-            }
-            key_state&=~(1<<i);
-        }
-    }
+    //make compiler happy
 }
 
 int get_key_press_event(int key_index)
 {
-    if (key_index < 0 || key_index >= KEY_NUM)
-        return 0;
-    int ret = (key_press_event >> key_index) & 0x01;
-    key_press_event &= ~(1 << key_index);
-    return ret;
+    //make compiler happy
 }
 
 int get_key_release_event(int key_index)
 {
-    if (key_index < 0 || key_index >= KEY_NUM)
-        return 0;
-    int ret = (key_release_event >> key_index) & 0x01;
-    key_release_event &= ~(1 << key_index);
-    return ret;
+    //make compiler happy
 }
 
 void key_set(int argc, char **argv)
 {
-    if (argc < 2)
-    {
-        rt_kprintf("Usage: key_set <hex_value>\n");
-        rt_kprintf("Example: key_set 0x00A1\n");
-        return;
-    }
-
-    /* 将字符串参数转换为整型数 */
-    char *endptr;
-    long parsed_value = strtol(argv[1], &endptr, 16); /* 16表示16进制 */
-
-    /* 检查转换是否成功 */
-    if (*endptr != '\0')
-    {
-        // rt_kprintf("Error: Invalid hex value. Please input like '0x0000'.\n");
-        return;
-    }
-
-    /* 检查值是否在合理的范围内 (根据你的变量类型调整，这里假设key_state是int) */
-    if (parsed_value < 0 || parsed_value > 0xFFFF)
-    {
-        // rt_kprintf("Error: Value out of range. Please input between 0x0000 and 0xFFFF.\n");
-        return;
-    }
-
-    key_state = (int)parsed_value;
-    // rt_kprintf("key_state set to 0x%04X\n", key_state); /* %04X表示输出4位十六进制，不足补零 */
+    //make compiler happy
 }
 MSH_CMD_EXPORT(key_set, set key_state value e.g: key_debug 0x0000);
 
@@ -195,23 +92,8 @@ rt_timer_t timer = NULL;
 int osd_installtimer(int frequency, void *func, int funcsize, void *counter, int countersize)
 {
     printf("Timer install, freq=%d\n", frequency);
-    
-    // // 创建RT-Thread定时器（周期模式）
-    // timer = rt_timer_create(
-    //     "nes",                          // 定时器名称
-    //     (void (*)(void*))func,          // 超时回调函数（需强制转换函数类型）
-    //     RT_NULL,                        // 回调函数参数
-    //     RT_TICK_PER_SECOND / frequency, // 超时时间（tick数）
-    //     RT_TIMER_FLAG_PERIODIC          // 周期定时模式
-    // );
-    
-    // // 启动定时器
-    // if (timer != RT_NULL) {
-    //     rt_timer_start(timer);
-    // } else {
-    //     printf("Failed to create timer!\n");
-    //     return -1;
-    // }
+
+    // 目前模拟器不依赖该定时器回调作为参考时间。
     
     return 0;
 }
@@ -230,68 +112,14 @@ uint32_t audio_shift_bits = 5;
 
 
 #define RING_BUFFER_LENGTH 1536
-typedef struct audio_ring_buffer_s
-{
-    int16_t samples[RING_BUFFER_LENGTH];
-    int write_p, read_p;
-} audio_ring_buffer_t;
-audio_ring_buffer_t audio_ring_buffer = {
-    .write_p = 0,
-    .read_p = 0
-};
-
-int audio_ring_get_buffered()
-{
-    int ret = audio_ring_buffer.write_p - audio_ring_buffer.read_p;
-    if (ret < 0)
-        ret += RING_BUFFER_LENGTH;
-    return ret;
-}
-
-int audio_ring_get_free()
-{
-    return RING_BUFFER_LENGTH - audio_ring_get_buffered() - 1;
-}
-
-void audio_ring_buffer_put(int16_t *samples, uint32_t shift_bits, int length)
-{
-    for (int i = 0; i < length; i++)
-    {
-        audio_ring_buffer.samples[audio_ring_buffer.write_p++] = samples[i] >> shift_bits;
-        if (audio_ring_buffer.write_p == RING_BUFFER_LENGTH)
-            audio_ring_buffer.write_p = 0;
-    }
-}
-
-void audio_ring_buffer_get(int16_t *samples, int length)
-{
-    for (int i = 0; i < length; i++)
-    {
-        if (audio_ring_buffer.read_p == audio_ring_buffer.write_p)
-        {
-            samples[i] = 0;
-        }
-        else
-        {
-            samples[i] = audio_ring_buffer.samples[audio_ring_buffer.read_p++];
-            if (audio_ring_buffer.read_p == RING_BUFFER_LENGTH)
-                audio_ring_buffer.read_p = 0;
-        }
-    }
-}
 
 void do_audio_frame()
 {
-    // printf("audio frame start: %d\n",(int)rt_tick_get());
-    // printf("audio buffer now level: %d\n", audio_ring_get_buffered());
-    int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
-    int free = audio_ring_get_free();
-    if(nsamples > free)
-        nsamples = free;
-    audio_callback(audio_frame, nsamples);
-    audio_ring_buffer_put(audio_frame, audio_shift_bits, nsamples);
-    // printf("audio buffer level after put: %d\n", audio_ring_get_buffered());
-    // printf("audio frame end: %d\n",(int)rt_tick_get());
+    // int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
+    // int free = audio_ring_get_free();
+    // if(nsamples > free) nsamples = free;
+    // audio_callback(audio_frame, nsamples);
+    // audio_ring_buffer_put(audio_frame, audio_shift_bits, nsamples);
 }
 
 void osd_setsound(void (*playfunc)(void *buffer, int length))
@@ -529,7 +357,8 @@ static int ConvertGamepadInput()
 {
     int result = 0;
 
-    uint16_t aw_input = ~get_aw9523_input();
+    // uint16_t aw_input = ~get_aw9523_input();
+    uint16_t aw_input=0;
 
     if(aw_input & (1 << 0)) // a
     {

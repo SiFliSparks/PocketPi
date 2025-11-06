@@ -104,7 +104,7 @@ static LCDC_InitTypeDef lcdc_int_cfg =
 
     .cfg = {
         .dbi = {
-            .syn_mode = HAL_LCDC_SYNC_VER,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
+            .syn_mode = HAL_LCDC_SYNC_DISABLE,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
             .vsyn_polarity = 0,
             .vsyn_delay_us = 0,
             .hsyn_num = 0,
@@ -266,7 +266,7 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[0] = 0x20;
     LCD_WriteReg(hlcdc, 0xC4, parameter, 1);
 
-    parameter[0] = 0x0F;
+    parameter[0] = 0x00;
     LCD_WriteReg(hlcdc, 0xC6, parameter, 1); // 60Hz
 
     parameter[0] = 0xA4;
@@ -308,8 +308,8 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[13] = 0x32;
     LCD_WriteReg(hlcdc, 0xE1, parameter, 14);
 
-    parameter[0] = 0x00;
-    LCD_WriteReg(hlcdc, 0x35, parameter, 1);
+    // parameter[0] = 0x00;
+    // LCD_WriteReg(hlcdc, 0x35, parameter, 1);
 #if 0
     parameter[0] = 0x00;
     parameter[1] = 0x00;
