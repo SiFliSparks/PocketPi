@@ -36,8 +36,6 @@ char configfilename[]="na";
 int osd_main(int argc, char *argv[])
 {
    config.filename = configfilename;
-   
-   rt_thread_mdelay(500);
 
    return main_loop(argv[0], system_nes);
 }

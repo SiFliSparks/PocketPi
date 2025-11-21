@@ -1,6 +1,8 @@
 #include "input.h"
 
 static struct rt_i2c_bus_device *i2c_bus = NULL;
+static uint16_t state_cache = 0xFFFF;
+static uint32_t last_updete_time = 0;
 
 rt_err_t input_init()
 {
@@ -20,7 +22,7 @@ rt_err_t input_init()
         .mode = 0,
         .addr = 0,
         .timeout = 500, //Waiting for timeout period (ms)
-        .max_hz = 100000, //I2C rate (hz)
+        .max_hz = 400000, //I2C rate (hz)
     };
     // config I2C parameter
     rt_i2c_configure(i2c_bus, &configuration);
@@ -74,8 +76,11 @@ uint16_t input_get_state()
         rt_kprintf("input: i2c bus not initialized!\n");
         return 0;
     }
-    // HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); 
-    // HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
+    if(rt_tick_get() - last_updete_time < 10)
+    {
+        return state_cache;
+    }
+
     uint16_t port_data = 0;
     uint8_t buf[2];
     buf[0] = 0x00; buf[1] = 0;
@@ -86,5 +91,20 @@ uint16_t input_get_state()
     rt_i2c_master_send(i2c_bus, INPUT_AW9523_DEV_ADDR, RT_I2C_WR , buf, 1);
     rt_i2c_master_recv(i2c_bus, INPUT_AW9523_DEV_ADDR, RT_I2C_RD , buf + 1, 1);
     port_data |= (buf[1] << 8);
+    state_cache = port_data;
+    last_updete_time = rt_tick_get();
     return port_data;
+}
+
+int input_get_key_state(int key_index)
+{
+    uint16_t state = input_get_state();
+    if(state & (1 << key_index))
+    {
+        return 0; // not pressed
+    }
+    else
+    {
+        return 1; // pressed
+    }
 }

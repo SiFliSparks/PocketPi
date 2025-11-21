@@ -6,13 +6,6 @@
 
 #include "log.h"
 
-
-
-
-
-
-
-
 #ifdef ROW_OFFSET_PLUS
     #define ROW_OFFSET  (ROW_OFFSET_PLUS)
 #else
@@ -27,8 +20,8 @@
 /**
   * @brief  st7789_dbi Size
   */
-#define  THE_LCD_PIXEL_WIDTH    ((uint16_t)320)
-#define  THE_LCD_PIXEL_HEIGHT   ((uint16_t)240)
+#define  THE_LCD_PIXEL_WIDTH    ((uint16_t)240)
+#define  THE_LCD_PIXEL_HEIGHT   ((uint16_t)320)
 
 /**
   * @brief  st7789_dbi Timing
@@ -99,13 +92,13 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 static LCDC_InitTypeDef lcdc_int_cfg =
 {
     .lcd_itf = LCDC_INTF_DBI_8BIT_B,
-    .freq = 24000000,
+    .freq = 12000000,
     .color_mode = LCDC_PIXEL_FORMAT_RGB565,
 
     .cfg = {
         .dbi = {
-            .syn_mode = HAL_LCDC_SYNC_DISABLE,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
-            .vsyn_polarity = 0,
+            .syn_mode = HAL_LCDC_SYNC_VER,//HAL_LCDC_SYNC_VER, //HAL_LCDC_SYNC_DISABLE,
+            .vsyn_polarity = 1,
             .vsyn_delay_us = 0,
             .hsyn_num = 0,
         },
@@ -125,20 +118,20 @@ static LCDC_InitTypeDef lcdc_int_cfg =
 
 void st7789_dbi_CS_HOLD_LOW(void)
 {
-    GPIO_TypeDef *gpio = hwp_gpio1;
-    GPIO_InitTypeDef GPIO_InitStruct;
+    // GPIO_TypeDef *gpio = hwp_gpio1;
+    // GPIO_InitTypeDef GPIO_InitStruct;
 
-    // set sensor pin to output mode
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT;
-    GPIO_InitStruct.Pin = CS_PA_x_PIN;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(gpio, &GPIO_InitStruct);
+    // // set sensor pin to output mode
+    // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT;
+    // GPIO_InitStruct.Pin = CS_PA_x_PIN;
+    // GPIO_InitStruct.Pull = GPIO_NOPULL;
+    // HAL_GPIO_Init(gpio, &GPIO_InitStruct);
 
-    // set sensor pin to high == power on sensor board
-    HAL_GPIO_WritePin(gpio, CS_PA_x_PIN, (GPIO_PinState)0);
+    // // set sensor pin to high == power on sensor board
+    // HAL_GPIO_WritePin(gpio, CS_PA_x_PIN, (GPIO_PinState)0);
 
 
-    HAL_PIN_Set(PAD_PA00 + CS_PA_x_PIN, GPIO_A0 + CS_PA_x_PIN, PIN_PULLDOWN, 1);
+    // HAL_PIN_Set(PAD_PA00 + CS_PA_x_PIN, GPIO_A0 + CS_PA_x_PIN, PIN_PULLDOWN, 1);
 }
 
 void BSP_GPIO_Set_BL(int pin, int val)
@@ -165,7 +158,7 @@ void BSP_GPIO_Set_BL(int pin, int val)
 
 void st7789_dbi_CS_RELEASE(void)
 {
-    HAL_PIN_Set(PAD_PA00 + CS_PA_x_PIN, LCDC1_8080_CS, PIN_NOPULL, 1);
+    // HAL_PIN_Set(PAD_PA00 + CS_PA_x_PIN, LCDC1_8080_CS, PIN_NOPULL, 1);
 }
 /**
   * @brief  spi read/write mode
@@ -223,20 +216,20 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     /* Wait for 120ms */
     LCD_DRIVER_DELAY_MS(120);
 
-    parameter[0] = 0x30;//A0
+    parameter[0] = 0x40;//A0
     LCD_WriteReg(hlcdc, 0x36, parameter, 1);
     
     parameter[0] = 0x00;
     parameter[1] = 0x00;
     parameter[2] = 0x00;
     parameter[3] = 0xEF;
-    LCD_WriteReg(hlcdc, 0x2B, parameter, 4);
+    LCD_WriteReg(hlcdc, 0x2A, parameter, 4);
 
     parameter[0] = 0x00;
     parameter[1] = 0x00;
     parameter[2] = 0x01;
     parameter[3] = 0x3F;
-    LCD_WriteReg(hlcdc, 0x2A, parameter, 4);
+    LCD_WriteReg(hlcdc, 0x2B, parameter, 4);
 
     parameter[0] = 0x05;
     LCD_WriteReg(hlcdc, 0x3A, parameter, 1);
@@ -266,7 +259,7 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[0] = 0x20;
     LCD_WriteReg(hlcdc, 0xC4, parameter, 1);
 
-    parameter[0] = 0x00;
+    parameter[0] = 0x0F;
     LCD_WriteReg(hlcdc, 0xC6, parameter, 1); // 60Hz
 
     parameter[0] = 0xA4;
@@ -308,8 +301,8 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     parameter[13] = 0x32;
     LCD_WriteReg(hlcdc, 0xE1, parameter, 14);
 
-    // parameter[0] = 0x00;
-    // LCD_WriteReg(hlcdc, 0x35, parameter, 1);
+    parameter[0] = 0x00;
+    LCD_WriteReg(hlcdc, 0x35, parameter, 1);
 #if 0
     parameter[0] = 0x00;
     parameter[1] = 0x00;

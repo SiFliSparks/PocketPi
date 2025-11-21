@@ -25,14 +25,14 @@ if !BSP_USING_BUILT_LCD
 
     config LCD_HOR_RES_MAX
         int
-	    default 320 if LCD_USING_ZJY_ST7789_2_0
+	    default 240 if LCD_USING_ZJY_ST7789_2_0
 
     config LCD_VER_RES_MAX
         int
-        default 240 if LCD_USING_ZJY_ST7789_2_0
+        default 320 if LCD_USING_ZJY_ST7789_2_0
 
     config LCD_DPI
         int
-        default 235 if LCD_USING_ZJY_ST7789_2_0
+        default 200 if LCD_USING_ZJY_ST7789_2_0
 
 endif

@@ -32,6 +32,9 @@
 #include "bf0_hal.h"
 #include "drv_io.h"
 
+#include "input.h"
+#include "audio.h"
+
 // TODO: 改为使用aw9523的驱动
 
 void key_scan();
@@ -108,18 +111,22 @@ int audio_write_p = 0;
 extern rt_event_t g_tx_ev;
 extern rt_device_t audprc_dev;
 extern rt_device_t audcodec_dev;
-uint32_t audio_shift_bits = 5;
+uint32_t audio_shift_bits = 4;
 
 
 #define RING_BUFFER_LENGTH 1536
 
 void do_audio_frame()
 {
-    // int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
-    // int free = audio_ring_get_free();
-    // if(nsamples > free) nsamples = free;
-    // audio_callback(audio_frame, nsamples);
-    // audio_ring_buffer_put(audio_frame, audio_shift_bits, nsamples);
+    int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
+    int free = audio_ring_get_free();
+    if(nsamples > free) nsamples = free;
+    audio_callback(audio_frame, nsamples);
+    for(int i=0;i<nsamples;i++)
+    {
+        audio_frame[i] = audio_frame[i] >> audio_shift_bits;
+    }
+    audio_ring_buffer_put(audio_frame, nsamples);
 }
 
 void osd_setsound(void (*playfunc)(void *buffer, int length))
@@ -245,6 +252,7 @@ static void free_write(int num_dirties, rect_t *dirty_rects)
 uint16_t *lcdfb;
 extern rt_device_t lcd_device;
 extern const char *framebuffer;
+extern lv_obj_t * bg_img;
 int redrawNesFlag = 0; // 0:not redraw, 1:need redraw, 2:redrawing
 static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
 {
@@ -266,6 +274,19 @@ static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
     lv_img_cache_invalidate_src(&nes_img_dsc);
     lv_obj_invalidate(nes_img_obj); // 标记该对象需要重绘
     // printf("flush end: %d\n",(int)rt_tick_get());
+    // GPIO_TypeDef *gpio = hwp_gpio1;
+    // GPIO_InitTypeDef GPIO_InitStruct;
+
+    // set sensor pin to output mode
+    // HAL_RCC_EnableModule(RCC_MOD_GPIO1);
+    // GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    // GPIO_InitStruct.Pin = 2;
+    // GPIO_InitStruct.Pull = GPIO_PULLUP;
+    // HAL_GPIO_Init(gpio, &GPIO_InitStruct);
+    // HAL_PIN_Set(PAD_PA00 + 2, GPIO_A0 + 2, PIN_PULLUP, 1);
+    // while(HAL_GPIO_ReadPin(hwp_gpio1,2)==0) ;
+
+    lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
     uint32_t ms = lv_task_handler();
     // rt_thread_mdelay(ms);
 }
@@ -351,167 +372,97 @@ void tev(int argc, char **argv)
 }
 MSH_CMD_EXPORT(tev, trigger event by id e.g: tev 1);
 
+void nes_save_state()
+{
+    state_save();
+}
+MSH_CMD_EXPORT(nes_save_state, save nes state);
+
 extern uint16_t get_aw9523_input();
 int selectedSlot = 0;
 static int ConvertGamepadInput()
 {
     int result = 0;
 
-    // uint16_t aw_input = ~get_aw9523_input();
-    uint16_t aw_input=0;
+    /* 使用 input_get_key_state 替代 aw_input 位检查。
+       说明：文件中已有 INPUT_KEY_A/X/B 的定义与使用，其他按键常量按常见命名假设如下：
+       INPUT_KEY_Y, INPUT_KEY_START, INPUT_KEY_SELECT, INPUT_KEY_MENU,
+       INPUT_KEY_DOWN, INPUT_KEY_R, INPUT_KEY_LEFT, INPUT_KEY_UP, INPUT_KEY_RIGHT, INPUT_KEY_L
+       如果项目中常量命名不同，请告知或我可以搜索并做进一步替换。
+    */
 
-    if(aw_input & (1 << 0)) // a
+    if (input_get_key_state(INPUT_KEY_MENU))
+    {
+        /* menu 触发退出（原先使用 aw_input bit6） */
+        trigger_quit();
+    }
+
+    if (input_get_key_state(INPUT_KEY_A)) // a
     {
         result |= (1 << 13);
     }
 
-    if(aw_input & (1 << 1)) // x
+    if (input_get_key_state(INPUT_KEY_X)) // x
     {
         // this button is unused
     }
 
-    if(aw_input & (1 << 2)) // b
+    if (input_get_key_state(INPUT_KEY_B)) // b
     {
         result |= (1 << 14);
     }
 
-    if(aw_input & (1 << 3)) // y
+    if (input_get_key_state(INPUT_KEY_Y)) // y
     {
         // this button is unused
     }
 
-    if(aw_input & (1 << 4)) // start
+    if (input_get_key_state(INPUT_KEY_START)) // start
     {
         result |= (1 << 3);
     }
 
-    if(aw_input & (1 << 5)) // select
+    if (input_get_key_state(INPUT_KEY_SELECT)) // select
     {
         result |= (1 << 0);
     }
 
-    if(aw_input & (1 << 6)) // menu
+    if (input_get_key_state(INPUT_KEY_MENU)) // menu（保留但标注为未使用）
     {
         // this button is unused
     }
-    
-    if(aw_input & (1 << 7)) // down
+
+    if (input_get_key_state(INPUT_KEY_DOWN)) // down
     {
         result |= (1 << 6);
     }
-    
+
     // no 8-10
 
-    if(aw_input & (1 << 11)) // r
+    if (input_get_key_state(INPUT_KEY_R)) // r
     {
         // this button is unused
     }
 
-    if(aw_input & (1 << 12)) // left
+    if (input_get_key_state(INPUT_KEY_LEFT)) // left
     {
         result |= (1 << 7);
     }
-    
-    if(aw_input & (1 << 13)) // up
+
+    if (input_get_key_state(INPUT_KEY_UP)) // up
     {
         result |= (1 << 4);
     }
 
-    if(aw_input & (1 << 14)) // right
+    if (input_get_key_state(INPUT_KEY_RIGHT)) // right
     {
         result |= (1 << 5);
     }
 
-    if(aw_input & (1 << 15)) // l
+    if (input_get_key_state(INPUT_KEY_L)) // l
     {
         // this button is unused
     }
-
-    // if(get_key_state(0) && get_key_press_event(5))
-    // {
-    //     if(audio_shift_bits > 1) audio_shift_bits--;
-    // }
-    // if(get_key_state(0) && get_key_press_event(8))
-    // {
-    //     if(audio_shift_bits < 16) audio_shift_bits++;
-    // }
-
-    // if(get_key_state(0) && get_key_press_event(7))
-    // {
-    //     selectedSlot--;
-    //     if(selectedSlot < 0) selectedSlot = 9;
-    //     rt_kprintf("State slot: %d\n",selectedSlot);
-    //     state_setslot(selectedSlot);
-    // }
-
-    // if(get_key_state(0) && get_key_press_event(6))
-    // {
-    //     selectedSlot++;
-    //     if(selectedSlot > 9) selectedSlot = 0;
-    //     rt_kprintf("State slot: %d\n",selectedSlot);
-    //     state_setslot(selectedSlot);
-    // }
-
-    // if(get_key_state(0)&& get_key_press_event(4))
-    // {
-    //     state_save();
-    // }
-
-    // if(get_key_state(0)&& get_key_press_event(3))
-    // {
-    //     state_load();
-    // }
-
-    // if(get_key_state(0)&& get_key_press_event(2))
-    // {
-    //     trigger_quit();
-    // }
-
-    // if(get_key_state(0))
-    // {
-    //     result |= (1 << 0); // select
-    // }
-
-    // // if(get_key_state(1))
-    // // {
-    // //     result |= (1 << 3); // menu
-    // // }
-
-    // if(get_key_state(2))
-    // {
-    //     result |= (1 << 3); // start
-    // }
-
-    // if(get_key_state(3))
-    // {
-    //     result |= (1 << 14); // b
-    // }
-
-    // if(get_key_state(4))
-    // {
-    //     result |= (1 << 13); // a
-    // }
-
-    // if(get_key_state(5))
-    // {
-    //     result |= (1 << 4); // up
-    // }
-
-    // if(get_key_state(6))
-    // {
-    //     result |= (1 << 5); // right
-    // }
-
-    // if(get_key_state(7))
-    // {
-    //     result |= (1 << 7); // left
-    // }
-
-    // if(get_key_state(8))
-    // {
-    //     result |= (1 << 6); // down
-    // }
-    
     return result;
 }
 
@@ -606,6 +557,8 @@ int osd_init()
     lv_img_set_zoom(nes_img_obj, 256); // 
     lv_img_set_src(nes_img_obj, &nes_img_dsc); // 设置图像数据源
     lv_obj_align(nes_img_obj, LV_ALIGN_CENTER, 0, 0); // 居中显示，你可以调整位置和大小
+    lv_img_set_pivot(nes_img_obj, 256/2, 224/2); // 设置旋转中心为图像中心
+    // lv_img_set_angle(nes_img_obj, 900); 
 
     return 0;
 }
