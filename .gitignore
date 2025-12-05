@@ -1,5 +1,6 @@
 .vscode
-disk/
+disk/*
+!disk/sdcard/
 !disk/.gitkeep
 project/build_*
 project/__pycache__

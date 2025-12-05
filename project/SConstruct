@@ -24,7 +24,10 @@ TARGET = rtconfig.OUTPUT_DIR + rtconfig.TARGET_NAME + '.' + rtconfig.TARGET_EXT
 # Prepare building environment
 objs = PrepareBuilding(None)
 env = GetCurrentEnv()
-env.Append(CCFLAGS=['-Ofast'])
+# env.Append(CCFLAGS=['-Ofast'])
+
+# Add linker flags to display memory usage
+env.Append(LINKFLAGS=['-Wl,--print-memory-usage'])
 
 # Build application.
 DoBuilding(TARGET, objs)

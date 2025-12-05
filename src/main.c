@@ -1,3 +1,4 @@
+// TODO:规范头文件包含写法
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -15,60 +16,20 @@
 #include "input.h"
 #include "audio.h"
 #include "tjpgd.h"
+#include "game_list.h"
+#include "img_decode.h"
 
-typedef struct {
-    FILE* fp;
-    uint8_t *fbuf;
-    uint32_t wfbuf;
-} IODEV;
-uint8_t *logo_data =NULL;
-lv_img_dsc_t logo_dsc;
+// TODO:集中声明
+img_decode_result_t no_image_result = {0};  // 默认图标（用于无图标的游戏）
+img_decode_result_t bg_result = {0};        // 背景图片
+
+lv_img_dsc_t no_image_dsc;
 lv_img_dsc_t bg_dsc;
 lv_obj_t * bg_img;
 
-size_t in_func (JDEC* jd, unsigned char* buff, size_t nbyte)
-{
-    IODEV *dev = (IODEV*)jd->device;   /* Device identifier for the session (5th argument of jd_prepare function) */
- 
- 
-    if (buff) {
-        /* 从输入流读取一字节 */
-        return (uint32_t)fread(buff, 1, nbyte, dev->fp);
-    } else {
-        /* 从输入流移除一字节 */
-        return fseek(dev->fp, nbyte, SEEK_CUR) ? 0 : nbyte;
-    }
-}
-
-int out_func (JDEC* jd, void* bitmap, JRECT* rect)
-{
-    IODEV *dev = (IODEV*)jd->device;
-    uint8_t *src, *dst;
-    uint32_t y, bws, bwd;
- 
- 
-    /* 输出进度 */
-    if (rect->left == 0) {
-        printf("\r%lu%%", (rect->top << jd->scale) * 100UL / jd->height);
-    }
- 
-    /* 拷贝解码的RGB矩形范围到帧缓冲区(假设RGB888配置) */
-    src = (uint8_t*)bitmap;
-    dst = dev->fbuf + 3 * (rect->top * dev->wfbuf + rect->left);  /* 目标矩形的左上 */
-    bws = 3 * (rect->right - rect->left + 1);     /* 源矩形的宽度[字节] */
-    bwd = 3 * dev->wfbuf;                         /* 帧缓冲区宽度[字节] */
-    for (y = rect->top; y <= rect->bottom; y++) {
-        memcpy(dst, src, bws);   /* 拷贝一行 */
-        src += bws; dst += bwd;  /* 定位下一行 */
-    }
- 
-    return 1;    /* 继续解码 */
-}
-
 LV_FONT_DECLARE(nmdws_16);
 
-const char *framebuffer = (const char *)PSRAM_BASE+0x400000;
-rt_device_t lcd_device;
+// TODO:分离文件过滤到单独文件
 const char supported_extensions[][4] = {
     "nes",
     "NES"
@@ -109,35 +70,27 @@ int mnt_init(void)
 }
 INIT_ENV_EXPORT(mnt_init);
 
-static bool sdcard_init(void)
+// TODO:分离SD卡初始化到单独文件,实现热插拔检测
+void sdcard_init(void)
 {
-    // TF card must be inserted before initialization can proceed.
-    rt_pin_mode(27, PIN_MODE_INPUT); // PA27
-    while (rt_pin_read(27) == PIN_HIGH)
-    {
-        rt_kprintf("Please insert TF card.\n");
-        rt_thread_mdelay(1000);
-    }
-
-    rt_kprintf("TF card detected.\n");
-
     rt_device_t msd = rt_device_find("sd0");
     if (msd == NULL)
     {
-        rt_kprintf("Error: the flash device name (sd0) is not found.\n");
-        return false;
+        rt_kprintf("sd card not found\n");
+        return;
     }
-
+    // mkdir("/sdcard",0x0777);
     if (dfs_mount("sd0", "/sdcard", "elm", 0, 0) != 0) // fs exist
     {
-        rt_kprintf("mount fs on tf card to root fail\n");
-        return false;
+        rt_kprintf("mount fs on tf card to /sdcard fail\n");
+        rt_kprintf("sd card might not be formatted or is corrupted.\n");
+        return;
     }
 
-    rt_kprintf("mount fs on tf card to root success\n");
-    return true;
+    rt_kprintf("mount fs on tf card to /sdcard success\n");
 }
 
+// TODO:分离PSRAM内存管理到单独文件,重命名
 static uint8_t opus_heap_pool[4096 * 1024] L2_RET_BSS_SECT(opus_heap_pool);
 static struct rt_memheap opus_memheap;
 int opus_heap_init(void)
@@ -198,6 +151,7 @@ void keyboard_read(lv_indev_t * indev, lv_indev_data_t * data) {
     }
 }
 
+// TODO:删除无用函数
 void key_deinit();
 rt_thread_t nes_thread = RT_NULL;
 lv_obj_t * cont;
@@ -223,23 +177,27 @@ static void btn_event_cb(lv_event_t * e)
     if(nes_thread != RT_NULL) return;
 
     lv_event_code_t code = lv_event_get_code(e);
-    const char *file_name = NULL;
+    const char *game_path = NULL;
     if (code == LV_EVENT_RELEASED) {
         lv_obj_t *btn = lv_event_get_target(e);
-        lv_obj_t *label = lv_obj_get_child(btn, 0); // 获取第一个子对象（标签）
-
-        if (label && lv_obj_check_type(label, &lv_label_class)) {
-            file_name = lv_label_get_text(label);
-            printf("Clicked file: %s\n", file_name);
+        // 从按钮的用户数据中获取游戏路径
+        game_path = (const char*)lv_obj_get_user_data(btn);
+        if (game_path) {
+            rt_kprintf("Clicked game: %s\n", game_path);
+        } else {
+            rt_kprintf("Error: No game path found!\n");
+            return;
         }
     }
 
-    nes_thread = rt_thread_create("nes_launcher",
-        (void(*)(void*))emu_thread_entry, (void*)file_name,
+    nes_thread = rt_thread_create("nes_emu",
+        (void(*)(void*))emu_thread_entry, (void*)game_path,
         16384, 21, 100);
     if (nes_thread != NULL) {
         rt_thread_startup(nes_thread);
     }
+    lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cont, LV_OBJ_FLAG_HIDDEN);
     lv_obj_delete_delayed(cont,500);
 }
 
@@ -249,16 +207,6 @@ static void btn_focused_cb(lv_event_t * e)
     lv_obj_t * btn = lv_event_get_target(e);
     /* 将按钮滚动到可见区域，配合 lv_obj_set_scroll_snap_x 设置可以使其居中 */
     lv_obj_scroll_to_view(btn, LV_ANIM_ON);
-    // lv_obj_t * parent = lv_obj_get_parent(btn);
-    // int x = 0;
-    // for(int i=0;i<lv_obj_get_child_cnt(parent);)
-    // {
-    //     lv_obj_t * child = lv_obj_get_child(parent, i);
-    //     if(child == btn) break;
-    //     x = i * 120 + 120;
-    //     i++;
-    // }
-    // lv_obj_scroll_to_x(parent, x, LV_ANIM_ON);
 }
 
 static void scroll_event_cb(lv_event_t * e)
@@ -327,121 +275,315 @@ int extension_filter(const char *ext)
     return 0;
 }
 
+// 全局游戏列表（用于管理游戏数据）
+static GameList_t* current_game_list = NULL;
+
+/**
+ * @brief 合并多个游戏列表为一个
+ * @param lists 游戏列表数组
+ * @param count 列表数量
+ * @return 合并后的游戏列表，失败返回 NULL
+ */
+static GameList_t* merge_game_lists(GameList_t** lists, uint32_t count)
+{
+    if (!lists || count == 0) return NULL;
+    
+    // 计算总游戏数量
+    uint32_t total_games = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        if (lists[i]) {
+            total_games += lists[i]->game_count;
+        }
+    }
+    
+    if (total_games == 0) return NULL;
+    
+    // 创建合并后的列表
+    GameList_t* merged = (GameList_t*)opus_heap_malloc(sizeof(GameList_t));
+    if (!merged) return NULL;
+    
+    merged->base_path = (char*)opus_heap_malloc(16);
+    if (merged->base_path) {
+        strcpy(merged->base_path, "[Multiple]");
+    }
+    
+    merged->games = (GameInfo_t*)opus_heap_malloc(sizeof(GameInfo_t) * total_games);
+    if (!merged->games) {
+        if (merged->base_path) opus_heap_free(merged->base_path);
+        opus_heap_free(merged);
+        return NULL;
+    }
+    
+    // 复制所有游戏信息
+    uint32_t index = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        if (lists[i]) {
+            for (uint32_t j = 0; j < lists[i]->game_count; j++) {
+                merged->games[index++] = lists[i]->games[j];
+            }
+            // 清空原列表的 games 指针，防止重复释放
+            lists[i]->games = NULL;
+            lists[i]->game_count = 0;
+        }
+    }
+    
+    merged->game_count = total_games;
+    rt_kprintf("Merged %u games from %u directories\n", total_games, count);
+    
+    return merged;
+}
+
+void list_cleanup(void)
+{
+    if (current_game_list)
+    {
+        rt_kprintf("Cleaning up game list...\n");
+        free_game_list(current_game_list);
+        current_game_list = NULL;
+    }
+}
+
 void list_init(void)
 {
+    // 创建容器
     cont = lv_obj_create(lv_screen_active());
     lv_obj_set_size(cont, 320, 240);
-    // lv_obj_set_pos(cont, 240-1, 0);
-    // lv_obj_set_style_transform_pivot_x(cont, 120, 0);
-    // lv_obj_set_style_transform_pivot_y(cont, 160, 0);
-    // lv_obj_set_style_transform_angle(cont, 900, 0);
-    lv_obj_set_style_bg_opa(cont, LV_OPA_50, 0);
-    // lv_obj_center(cont);
+    lv_obj_set_style_bg_opa(cont, LV_OPA_0, 0);
+    /* Remove rounded corners and border for the container */
+    lv_obj_set_style_radius(cont, 0, 0);
+    lv_obj_set_style_border_width(cont, 0, 0);
+    lv_obj_set_style_border_opa(cont, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_add_event_cb(cont, scroll_event_cb, LV_EVENT_SCROLL, NULL);
-    // lv_obj_set_style_radius(cont, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_clip_corner(cont, true, 0);
     lv_obj_set_scroll_dir(cont, LV_DIR_VER);
-    /* 水平方向启用 snap 到中心，这样在调用 scroll_to_view 时会把子对象居中显示 */
-    // lv_obj_set_scroll_snap_x(cont, LV_SCROLL_SNAP_CENTER);
+    /* 垂直方向启用 snap 到中心，这样在调用 scroll_to_view 时会把子对象居中显示 */
     lv_obj_set_scroll_snap_y(cont, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_ON);
     lv_obj_set_scrollbar_mode(lv_screen_active(), LV_SCROLLBAR_MODE_OFF);
 
-    int cnt = 0;
-    DIR *dirp;
-    struct dirent *d; dirp = opendir("/");
-    if (dirp == RT_NULL)
-    {
-        rt_kprintf("open directory error!\n");
+    // 扫描多个目录的游戏列表
+    rt_kprintf("Scanning game lists from multiple directories...\n");
+    
+    const char* scan_paths[] = {
+        "/",                    // 根目录
+        "/sdcard/roms/nes"      // SD 卡 NES 游戏目录
+    };
+    const uint32_t path_count = sizeof(scan_paths) / sizeof(scan_paths[0]);
+    
+    GameList_t* temp_lists[path_count];
+    uint32_t valid_lists = 0;
+    
+    // 扫描每个目录
+    for (uint32_t i = 0; i < path_count; i++) {
+        rt_kprintf("Scanning: %s\n", scan_paths[i]);
+        temp_lists[i] = scan_game_list(scan_paths[i]);
+        if (temp_lists[i] && temp_lists[i]->game_count > 0) {
+            rt_kprintf("  Found %u game(s)\n", temp_lists[i]->game_count);
+            valid_lists++;
+        } else {
+            rt_kprintf("  No games found\n");
+        }
     }
-    while ((d = readdir(dirp)) != RT_NULL)
+    
+    // 合并所有游戏列表
+    if (valid_lists > 0) {
+        current_game_list = merge_game_lists(temp_lists, path_count);
+    }
+    
+    // 释放临时列表（已经合并，只需释放结构体）
+    for (uint32_t i = 0; i < path_count; i++) {
+        if (temp_lists[i]) {
+            if (temp_lists[i]->base_path) opus_heap_free(temp_lists[i]->base_path);
+            opus_heap_free(temp_lists[i]);
+        }
+    }
+    
+    if (!current_game_list || current_game_list->game_count == 0)
     {
-        char ext[16];
-        if(get_extension(d->d_name, ext, sizeof(ext)) == 0)
-        {
-            if(!extension_filter(ext)) continue;
-        }
-        else
-        {
-            continue;
-        }
+        rt_kprintf("No games found in any directory!\n");
+        return;
+    }
+
+    rt_kprintf("Total: %u game(s), creating UI...\n", current_game_list->game_count);
+
+    // 为每个游戏创建按钮
+    for (uint32_t i = 0; i < current_game_list->game_count; i++)
+    {
+        GameInfo_t *game = &current_game_list->games[i];
+        
+        // 创建图像按钮
         lv_obj_t * btn = lv_imagebutton_create(cont);
-        // lv_obj_set_pos(btn, cnt * 120 + 90, -100);
-        // lv_obj_set_pos(btn, 0,0);
-        cnt++;
-        char img_path[256];
-        sprintf(img_path, "/%s", d->d_name);
-        change_extension(img_path, img_path, sizeof(img_path), "jpg");
-        if(access(img_path, 0) == 0)
+        
+        // 尝试解码游戏图标
+        if (game->icon_path && decode_game_icon(game) == 0)
         {
-            static char lvg_img_path[260];
-            sprintf(lvg_img_path, "A:%s", img_path+1);
-            rt_kprintf("Image path: %s\n", lvg_img_path);
-            rt_kprintf("%c\n", lvg_img_path[0]);
-            lv_imagebutton_set_src(btn, LV_IMGBTN_STATE_RELEASED, NULL, lvg_img_path, NULL);
+            // 成功解码图标，创建 LVGL 图像描述符
+            static lv_img_dsc_t game_icon_dsc[32]; // 假设最多32个游戏
+            if (i < 32)
+            {
+                game_icon_dsc[i].header.always_zero = 0;
+                game_icon_dsc[i].header.w = game->icon.width;
+                game_icon_dsc[i].header.h = game->icon.height;
+                game_icon_dsc[i].header.cf = LV_COLOR_FORMAT_RGB888;
+                game_icon_dsc[i].data_size = game->icon.width * game->icon.height * 3;
+                game_icon_dsc[i].data = game->icon.data;
+                
+                lv_imagebutton_set_src(btn, LV_IMGBTN_STATE_RELEASED, NULL, &game_icon_dsc[i], NULL);
+            }
+            else
+            {
+                // 超过数组大小，使用默认图标
+                lv_imagebutton_set_src(btn, LV_IMGBTN_STATE_RELEASED, NULL, &no_image_dsc, NULL);
+            }
         }
         else
         {
-            lv_imagebutton_set_src(btn, LV_IMGBTN_STATE_RELEASED, NULL, &logo_dsc, NULL);
+            // 没有图标或解码失败，使用默认图标
+            lv_imagebutton_set_src(btn, LV_IMGBTN_STATE_RELEASED, NULL, &no_image_dsc, NULL);
         }
+        
+        // 设置按钮属性
         lv_group_add_obj(g, btn);
-        // lv_obj_set_width(btn, lv_pct(60));
         lv_obj_set_width(btn, 120);
         lv_obj_set_height(btn, 90);
         lv_obj_set_align(btn, LV_ALIGN_CENTER);
-        // lv_obj_set_style_transform_pivot_x(btn, lv_obj_get_width(btn) / 2, 0);
-        // lv_obj_set_style_transform_pivot_y(btn, lv_obj_get_height(btn) / 2, 0);
-        // lv_obj_set_style_transform_angle(btn, 900, 0);
+        
+        // // 设置圆角样式
+        // lv_obj_set_style_radius(btn, 24, 0);
+        // lv_obj_set_style_clip_corner(btn, true, 0);
+        
+        // 设置阴影样式
+        lv_obj_set_style_shadow_width(btn, 8, 0);
+        lv_obj_set_style_shadow_spread(btn, 2, 0);
+        lv_obj_set_style_shadow_ofs_x(btn, 0, 0);
+        lv_obj_set_style_shadow_ofs_y(btn, 4, 0);
+        lv_obj_set_style_shadow_color(btn, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_shadow_opa(btn, LV_OPA_30, 0);
+        
+        // 聚焦时增强阴影效果
+        lv_obj_set_style_shadow_width(btn, 12, LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_spread(btn, 3, LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_ofs_y(btn, 6, LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_opa(btn, LV_OPA_50, LV_STATE_FOCUSED);
 
-    lv_obj_t * label = lv_label_create(btn);
-    lv_label_set_text_fmt(label, "%s", d->d_name);
-    lv_obj_set_style_text_font(label, &nmdws_16, 0);
-    /* Make the label narrower than the button and enable circular scrolling
-     * so long filenames will scroll (marquee). Adjust percent if needed. */
-    lv_obj_set_width(label, lv_pct(100));
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_RELEASED, NULL);
-    /* 当按钮被键盘/方向键选中（获得焦点）时，让容器滚动并居中该按钮 */
-    lv_obj_add_event_cb(btn, btn_focused_cb, LV_EVENT_FOCUSED, NULL);
+        // 将游戏路径存储在按钮的用户数据中
+        lv_obj_set_user_data(btn, (void*)game->path);
+        
+        // 创建标签显示游戏名称
+        lv_obj_t * label = lv_label_create(btn);
+        lv_label_set_text(label, game->name);
+        lv_obj_set_style_text_font(label, &nmdws_16, 0);
+        /* Make the label narrower than the button and enable circular scrolling
+         * so long filenames will scroll (marquee). */
+        lv_obj_set_width(label, lv_pct(100));
+        lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        
+        // 添加事件回调
+        lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_RELEASED, NULL);
+        /* 当按钮被键盘/方向键选中（获得焦点）时，让容器滚动并居中该按钮 */
+        lv_obj_add_event_cb(btn, btn_focused_cb, LV_EVENT_FOCUSED, NULL);
     }
-    closedir(dirp);
 
     /*Update the buttons position manually for first*/
     lv_obj_send_event(cont, LV_EVENT_SCROLL, NULL);
 
-    /*Be sure the fist button is in the middle*/
-    lv_obj_scroll_to_view(lv_obj_get_child(cont, 0), LV_ANIM_OFF);
+    /*Be sure the first button is in the middle*/
+    if (lv_obj_get_child_cnt(cont) > 0)
+    {
+        lv_obj_scroll_to_view(lv_obj_get_child(cont, 0), LV_ANIM_OFF);
+    }
+    
+    rt_kprintf("Game list UI created successfully.\n");
 }
 
+// TODO:删除无用函数
 void delete_nes_thread(void)
 {
     if(nes_thread != RT_NULL) rt_thread_delete(nes_thread);
 }
 MSH_CMD_EXPORT(delete_nes_thread, delete nes thread);
 
-// 临时使用
-static struct rt_i2c_bus_device *i2c_bus = NULL;
-uint16_t get_aw9523_input()
+/**
+ * @brief 更换背景图片
+ * @param filename 新的背景图片文件路径
+ * @return 0: 成功, -1: 失败
+ */
+int change_background(int argc, char *argv[])
 {
+    if (argc < 2)
+    {
+        rt_kprintf("Usage: change_background <image_file>\n");
+        return -1;
+    }
+
+    const char* filename = argv[1];
+
+    if (!filename)
+    {
+        rt_kprintf("Error: filename is NULL\n");
+        return -1;
+    }
+
+    rt_kprintf("Changing background to: %s\n", filename);
+
+    // 临时解码结果
+    img_decode_result_t new_bg_result = {0};
     
-    // HAL_PIN_Set(PAD_PA11, I2C1_SCL, PIN_PULLUP, 1); // i2c io select
-    // HAL_PIN_Set(PAD_PA10, I2C1_SDA, PIN_PULLUP, 1);
-    // HAL_PIN_Set(PAD_PA09, GPIO_A0 + 9, PIN_PULLUP, 1);
-    // uint16_t port_data = 0;
-    // uint8_t buf[2];
-    // buf[0] = 0x00; buf[1] = 0;
-    // rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    // rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    // port_data |= buf[1];
-    // buf[0] = 0x01; buf[1] = 0;
-    // rt_i2c_master_send(i2c_bus, 0x5B, RT_I2C_WR , buf, 1);
-    // rt_i2c_master_recv(i2c_bus, 0x5B, RT_I2C_RD , buf + 1, 1);
-    // port_data |= (buf[1] << 8);
-    // return port_data;
-    // rt_kprintf("port data: 0x%04X\n", port_data);
-    // rt_thread_mdelay(10);
+    // 解码新的背景图片
+    if (img_decode_from_file(filename, &new_bg_result) != 0)
+    {
+        rt_kprintf("Failed to decode background image: %s\n", filename);
+        return -1;
+    }
+
+    // 调整图片大小到屏幕尺寸
+    if (img_decode_resize_image(&new_bg_result, 320, 240) != 0)
+    {
+        rt_kprintf("Failed to resize background image\n");
+        img_free_decode_result(&new_bg_result);
+        return -1;
+    }
+
+    // 释放旧的背景图片数据
+    if (bg_result.data)
+    {
+        img_free_decode_result(&bg_result);
+    }
+
+    // 更新全局背景数据
+    bg_result = new_bg_result;
+    
+    // 更新 LVGL 图像描述符
+    bg_dsc.header.always_zero = 0;
+    bg_dsc.header.w = bg_result.width;
+    bg_dsc.header.h = bg_result.height;
+    bg_dsc.header.cf = LV_COLOR_FORMAT_RGB888;
+    bg_dsc.data_size = bg_result.width * bg_result.height * 3;
+    bg_dsc.data = bg_result.data;
+
+    // 如果背景图像对象已存在，更新其图像源
+    if (bg_img)
+    {
+        lv_img_set_src(bg_img, &bg_dsc);
+        lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
+        
+        // 重新计算缩放比例
+        float ratio_x = (float)320 / (float)bg_dsc.header.w;
+        float ratio_y = (float)240 / (float)bg_dsc.header.h;
+        float ratio = ratio_x > ratio_y ? ratio_x : ratio_y;
+        lv_img_set_zoom(bg_img, (int)(256 * ratio));
+        
+        rt_kprintf("Background changed successfully\n");
+    }
+    else
+    {
+        rt_kprintf("Warning: bg_img object not initialized yet\n");
+    }
+
+    return 0;
 }
+MSH_CMD_EXPORT(change_background, change background image);
 
 
 /**
@@ -457,8 +599,6 @@ int main(void)
     opus_heap_init();
 
     rt_err_t ret = RT_EOK;
-    rt_err_t err;
-    rt_uint32_t ms;
     /* init littlevGL */
     ret = littlevgl2rtt_init("lcd");
     HAL_PIN_Set(PAD_PA00 + 41, LCDC1_8080_DIO5, PIN_PULLDOWN, 1);
@@ -467,107 +607,47 @@ int main(void)
     {
         return ret;
     }
-    // lv_display_set_rotation(NULL, LV_DISPLAY_ROTATION_270);
+    // 旋转屏幕显示方向
+    lv_display_set_rotation(NULL, LV_DISPLAY_ROTATION_270);
+    // 设置屏幕背景色为黑色
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), 0);
 
-    // TODO: 替换成分离到 audio.c 的接口
+    sdcard_init();
+
     audio_init();
 
-    void * work;
-    JDEC jdec;
-    JRESULT jres;
-    IODEV devid;
-
-    devid.fp = fopen("NES_logo.jpg", "rb");
-    if(devid.fp == NULL)
+    // 默认图标解码
+    if (img_decode_from_file("no_image.jpg", &no_image_result) == 0)
     {
-        rt_kprintf("Open image file failed!\n");
+        rt_kprintf("Default game icon decoded successfully.\n");
+        img_decode_resize_image(&no_image_result, 120, 90);
+        no_image_dsc.header.always_zero = 0;
+        no_image_dsc.header.w = no_image_result.width;
+        no_image_dsc.header.h = no_image_result.height;
+        no_image_dsc.header.cf = LV_COLOR_FORMAT_RGB888;
+        no_image_dsc.data_size = no_image_result.width * no_image_result.height * 3;
+        no_image_dsc.data = no_image_result.data;
     }
     else
     {
-        work = malloc(3100*2); // 分配解码工作区
-        jres = jd_prepare(&jdec, in_func, work, 3100*2, &devid);
-        if (jres == JDR_OK)
-        {
-            rt_kprintf("Image prepared: %d x %d\n", jdec.width, jdec.height);
-            devid.fbuf = opus_heap_malloc(jdec.width * jdec.height * 3); // RGB888
-            devid.wfbuf = jdec.width;
-            jres = jd_decomp(&jdec, out_func, 0); // 开始解码
-            if (jres == JDR_OK)
-            {
-                rt_kprintf("Image decoded successfully.\n");
-            }
-            else
-            {
-                rt_kprintf("Image decode failed: %d\n", jres);
-            }
-        }
-        else
-        {
-            rt_kprintf("Image prepare failed: %d\n", jres);
-        }
-        // for(int i=0;i<jdec.width * jdec.height;i++)
-        // {
-        //     uint8_t r = devid.fbuf[i*3];
-        //     uint8_t g = devid.fbuf[i*3+1];
-        //     uint8_t b = devid.fbuf[i*3+2];
-        //     uint16_t rgb565 = (r>>3) | (g>>2)<<5 | (b>>3) <<11;
-        //     ((uint16_t *)(devid.fbuf))[i] = rgb565;
-        // }
-        logo_dsc.header.always_zero = 0;
-        logo_dsc.header.w = jdec.width;
-        logo_dsc.header.h = jdec.height;
-        logo_dsc.header.cf = LV_COLOR_FORMAT_RGB888;
-        logo_dsc.data_size = jdec.width * jdec.height * 3;
-        logo_dsc.data = devid.fbuf;
-        logo_data = devid.fbuf;
-        fclose(devid.fp);
-        free(work);
+        rt_kprintf("Failed to decode no_image.jpg (default icon)\n");
     }
 
-    devid.fp = fopen("bg.jpg", "rb");
-    if(devid.fp == NULL)
+    // 背景图片解码
+    if (img_decode_from_file("bg.jpg", &bg_result) == 0)
     {
-        rt_kprintf("Open image file failed!\n");
-    }
-    else
-    {
-        work = malloc(3100*2); // 分配解码工作区
-        jres = jd_prepare(&jdec, in_func, work, 3100*2, &devid);
-        if (jres == JDR_OK)
-        {
-            rt_kprintf("Image prepared: %d x %d\n", jdec.width, jdec.height);
-            devid.fbuf = opus_heap_malloc(jdec.width * jdec.height * 3); // RGB888
-            devid.wfbuf = jdec.width;
-            jres = jd_decomp(&jdec, out_func, 0); // 开始解码
-            if (jres == JDR_OK)
-            {
-                rt_kprintf("Image decoded successfully.\n");
-            }
-            else
-            {
-                rt_kprintf("Image decode failed: %d\n", jres);
-            }
-        }
-        else
-        {
-            rt_kprintf("Image prepare failed: %d\n", jres);
-        }
-        // for(int i=0;i<jdec.width * jdec.height;i++)
-        // {
-        //     uint8_t r = devid.fbuf[i*3];
-        //     uint8_t g = devid.fbuf[i*3+1];
-        //     uint8_t b = devid.fbuf[i*3+2];
-        //     uint16_t rgb565 = (r>>3) | (g>>2)<<5 | (b>>3) <<11;
-        //     ((uint16_t *)(devid.fbuf))[i] = rgb565;
-        // }
+        rt_kprintf("Background image decoded successfully.\n");
+        img_decode_resize_image(&bg_result, 320, 240);
         bg_dsc.header.always_zero = 0;
-        bg_dsc.header.w = jdec.width;
-        bg_dsc.header.h = jdec.height;
+        bg_dsc.header.w = bg_result.width;
+        bg_dsc.header.h = bg_result.height;
         bg_dsc.header.cf = LV_COLOR_FORMAT_RGB888;
-        bg_dsc.data_size = jdec.width * jdec.height * 3;
-        bg_dsc.data = devid.fbuf;
-        fclose(devid.fp);
-        free(work);
+        bg_dsc.data_size = bg_result.width * bg_result.height * 3;
+        bg_dsc.data = bg_result.data;
+    }
+    else
+    {
+        rt_kprintf("Failed to decode bg.jpg\n");
     }
 
     input_init();
@@ -579,21 +659,12 @@ int main(void)
     bg_img = lv_img_create(lv_scr_act());
     lv_img_set_src(bg_img, &bg_dsc);
     lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
-    // lv_img_set_angle(bg_img, 900);
     float ratio_x = (float)320 / (float)bg_dsc.header.w;
     float ratio_y = (float)240 / (float)bg_dsc.header.h;
     float ratio = ratio_x > ratio_y ? ratio_x : ratio_y;
     lv_img_set_zoom(bg_img, (int)(256 * ratio));
     list_init(); 
     /* Infinite loop */
-    // mkdir("/sdcard",0x0777);
-    // sdcard_init();   
-    // nes_thread = rt_thread_create("nes_launcher",
-    // (void(*)(void*))emu_thread_entry, (void*)"/sdcard/7100324.nes",
-    // 16384, 21, 100);
-    // if (nes_thread != NULL) {
-    //     rt_thread_startup(nes_thread);
-    // }
 
     while (1)
     {
@@ -605,10 +676,13 @@ int main(void)
                 nes_img_obj = NULL;
                 free(lcdfb);
                 lcdfb = NULL;
+                // 清理旧的游戏列表（如果存在）
+                list_cleanup();
+                // 重新创建游戏列表 UI
                 list_init();
                 lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
             }
-            ms = lv_task_handler();
+            uint32_t ms = lv_task_handler();
             rt_thread_mdelay(ms);
         }
         else

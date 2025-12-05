@@ -4,7 +4,7 @@
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include <drivers/audio.h>
-
+#include <string.h>
 
 #define RING_BUFFER_LENGTH 1536
 #define DMA_BUF_SIZE    (256*2)

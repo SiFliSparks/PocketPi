@@ -54,6 +54,7 @@
 
 
 extern void osd_setsound(void (*playfunc)(void *buffer, int size));
+extern void osd_stopsound(void);
 
 // extern void *opus_heap_malloc(uint32_t size);
 

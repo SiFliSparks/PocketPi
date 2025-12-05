@@ -1,17 +1,5 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// TODO: 拆分这个文件的功能到多个文件
+// TODO: 整理头文件
 #include <math.h>
 #include <string.h>
 #include <noftypes.h>
@@ -35,7 +23,7 @@
 #include "input.h"
 #include "audio.h"
 
-// TODO: 改为使用aw9523的驱动
+// TODO: 删除无用函数
 
 void key_scan();
 void key_init()
@@ -104,8 +92,7 @@ int osd_installtimer(int frequency, void *func, int funcsize, void *counter, int
 /*
 ** Audio
 */
-static void (*audio_callback)(void *buffer, int length) = NULL;
-// QueueHandle_t queue;
+void (*audio_callback)(void *buffer, int length) = NULL;
 static short audio_frame[4096];
 int audio_write_p = 0;
 extern rt_event_t g_tx_ev;
@@ -118,15 +105,15 @@ uint32_t audio_shift_bits = 4;
 
 void do_audio_frame()
 {
-    int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
-    int free = audio_ring_get_free();
-    if(nsamples > free) nsamples = free;
-    audio_callback(audio_frame, nsamples);
-    for(int i=0;i<nsamples;i++)
-    {
-        audio_frame[i] = audio_frame[i] >> audio_shift_bits;
-    }
-    audio_ring_buffer_put(audio_frame, nsamples);
+    // int nsamples = DEFAULT_SAMPLERATE / NES_REFRESH_RATE + 1;
+    // int free = audio_ring_get_free();
+    // if(nsamples > free) nsamples = free;
+    // audio_callback(audio_frame, nsamples);
+    // for(int i=0;i<nsamples;i++)
+    // {
+    //     audio_frame[i] = audio_frame[i] >> audio_shift_bits;
+    // }
+    // audio_ring_buffer_put(audio_frame, nsamples);
 }
 
 void osd_setsound(void (*playfunc)(void *buffer, int length))
@@ -135,7 +122,7 @@ void osd_setsound(void (*playfunc)(void *buffer, int length))
     audio_callback = playfunc;
 }
 
-static void osd_stopsound(void)
+void osd_stopsound(void)
 {
     audio_callback = NULL;
 }
@@ -212,6 +199,7 @@ static int set_mode(int width, int height)
 }
 
 uint16_t myPalette[256];
+uint32_t PaletteARGB[256];
 
 /* copy nes palette over to hardware */
 static void set_palette(rgb_t *pal)
@@ -226,6 +214,16 @@ static void set_palette(rgb_t *pal)
         myPalette[i] = (c >> 8) | ((c & 0xff) << 8);
         // myPalette[i]=c;
     }
+    // for(i=0;i<256;i++)
+    // {
+    //     // PaletteARGB[i] = (0xff << 24) | (pal[i].r <<16) | (pal[i].g <<8) | (pal[i].b);
+    //     lv_color32_t col;
+    //     col.blue = pal[i].b;
+    //     col.green = pal[i].g;
+    //     col.red = pal[i].r;
+    //     col.alpha = 0xff;
+    //     lv_image_buf_set_palette(&nes_img_dsc, i, col);
+    // }
 }
 
 /* clear all frames to a particular color */
@@ -248,10 +246,7 @@ static void free_write(int num_dirties, rect_t *dirty_rects)
     bmp_destroy(&myBitmap);
 }
 
-// uint16_t lcdfb[256 * 224];
 uint16_t *lcdfb;
-extern rt_device_t lcd_device;
-extern const char *framebuffer;
 extern lv_obj_t * bg_img;
 int redrawNesFlag = 0; // 0:not redraw, 1:need redraw, 2:redrawing
 static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
@@ -274,19 +269,8 @@ static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
     lv_img_cache_invalidate_src(&nes_img_dsc);
     lv_obj_invalidate(nes_img_obj); // 标记该对象需要重绘
     // printf("flush end: %d\n",(int)rt_tick_get());
-    // GPIO_TypeDef *gpio = hwp_gpio1;
-    // GPIO_InitTypeDef GPIO_InitStruct;
 
-    // set sensor pin to output mode
-    // HAL_RCC_EnableModule(RCC_MOD_GPIO1);
-    // GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    // GPIO_InitStruct.Pin = 2;
-    // GPIO_InitStruct.Pull = GPIO_PULLUP;
-    // HAL_GPIO_Init(gpio, &GPIO_InitStruct);
-    // HAL_PIN_Set(PAD_PA00 + 2, GPIO_A0 + 2, PIN_PULLUP, 1);
-    // while(HAL_GPIO_ReadPin(hwp_gpio1,2)==0) ;
-
-    lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
+    // lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
     uint32_t ms = lv_task_handler();
     // rt_thread_mdelay(ms);
 }
@@ -377,9 +361,129 @@ void nes_save_state()
     state_save();
 }
 MSH_CMD_EXPORT(nes_save_state, save nes state);
+static lv_obj_t * pause_menu = NULL;
+int is_paused = 0;
+extern lv_group_t * g;
+extern lv_indev_t * indev;
+
+
+// 销毁暂停菜单
+static void destroy_pause_menu(void)
+{
+    if (pause_menu) {
+        // 从组中移除按钮
+        uint32_t child_cnt = lv_obj_get_child_cnt(pause_menu);
+        for (uint32_t i = 0; i < child_cnt; i++) {
+            lv_obj_t * child = lv_obj_get_child(pause_menu, i);
+            if (lv_obj_check_type(child, &lv_btn_class)) {
+                lv_group_remove_obj(child);
+            }
+        }
+        
+        lv_obj_del(pause_menu);
+        pause_menu = NULL;
+    }
+}
+
+// 暂停菜单按钮事件回调
+static void pause_menu_event_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        lv_obj_t * btn = lv_event_get_target(e);
+        int action = (int)(intptr_t)lv_obj_get_user_data(btn);
+        
+        switch(action) {
+            case 0: // 存档
+                rt_kprintf("Saving state...\n");
+                state_save();
+                rt_kprintf("State saved\n");
+                break;
+                
+            case 1: // 读档
+                rt_kprintf("Loading state...\n");
+                state_load();
+                rt_kprintf("State loaded\n");
+                break;
+                
+            case 2: // 退出
+                rt_kprintf("Exiting game...\n");
+                // 退出前先销毁菜单
+                destroy_pause_menu();
+                is_paused = 0;
+                trigger_quit();
+                break;
+        }
+        
+        // 恢复游戏（非退出情况）
+        if (action != 2) {
+            trigger_event(event_togglepause);
+            is_paused = 0;
+            destroy_pause_menu();
+        }
+    }
+}
+
+// 创建暂停菜单
+static void create_pause_menu(void)
+{
+    if (pause_menu) return; // 已存在
+    
+    // 创建半透明背景容器
+    pause_menu = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(pause_menu, 320, 240);
+    lv_obj_center(pause_menu);
+    lv_obj_set_style_bg_color(pause_menu, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(pause_menu, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(pause_menu, 0, 0);
+    lv_obj_set_style_pad_all(pause_menu, 20, 0);
+    lv_obj_set_flex_flow(pause_menu, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(pause_menu, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    // 标题
+    lv_obj_t * title = lv_label_create(pause_menu);
+    lv_label_set_text(title, "PAUSED");
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_pad_bottom(title, 20, 0);
+    
+    const char * btn_texts[] = {"Save State", "Load State", "Exit Game"};
+    
+    // 创建三个按钮
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t * btn = lv_btn_create(pause_menu);
+        lv_obj_set_width(btn, 200);
+        lv_obj_set_height(btn, 50);
+        lv_obj_set_style_radius(btn, 8, 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2196F3), 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x1976D2), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x42A5F5), LV_STATE_FOCUSED);
+        
+        // 添加到输入组
+        lv_group_add_obj(g, btn);
+        
+        // 存储按钮功能ID
+        lv_obj_set_user_data(btn, (void*)(intptr_t)i);
+        
+        lv_obj_t * label = lv_label_create(btn);
+        lv_label_set_text(label, btn_texts[i]);
+        lv_obj_center(label);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        
+        lv_obj_add_event_cb(btn, pause_menu_event_cb, LV_EVENT_CLICKED, NULL);
+        
+        // 设置间距
+        if (i < 2) {
+            lv_obj_set_style_pad_bottom(btn, 10, 0);
+        }
+    }
+}
 
 extern uint16_t get_aw9523_input();
+extern void trigger_quit();
+
 int selectedSlot = 0;
+int lastMenuButtonState = 0;
 static int ConvertGamepadInput()
 {
     int result = 0;
@@ -391,11 +495,28 @@ static int ConvertGamepadInput()
        如果项目中常量命名不同，请告知或我可以搜索并做进一步替换。
     */
 
-    if (input_get_key_state(INPUT_KEY_MENU))
+    // if (input_get_key_state(INPUT_KEY_MENU))
+    // {
+    //     /* menu 触发退出（原先使用 aw_input bit6） */
+    //     // trigger_quit();
+    // }
+
+    int menuButtonState = input_get_key_state(INPUT_KEY_MENU);
+    if (menuButtonState && !lastMenuButtonState)
     {
-        /* menu 触发退出（原先使用 aw_input bit6） */
-        trigger_quit();
+        // Menu button pressed
+        trigger_event(event_togglepause);
+        is_paused = !is_paused;
+        
+        if (is_paused) {
+            // 进入暂停，创建菜单
+            create_pause_menu();
+        } else {
+            // 退出暂停，销毁菜单
+            destroy_pause_menu();
+        }
     }
+    lastMenuButtonState = menuButtonState;
 
     if (input_get_key_state(INPUT_KEY_A)) // a
     {

@@ -8,7 +8,7 @@ audio_ring_buffer_t audio_ring_buffer = {
     .read_p = 0
 };
 static rt_thread_t audio_thread = RT_NULL;
-
+extern void (*audio_callback)(void *buffer, int length);
 
 static rt_err_t speaker_tx_done(rt_device_t dev, void *buffer)
 {
@@ -57,12 +57,35 @@ void audio_ring_buffer_get(int16_t *samples, int length)
     }
 }
 
+// static void audio_thread_entry(void *parameter)
+// {
+//     int16_t audio_temp_buffer[DMA_BUF_SIZE];
+//     while (1)
+//     {
+//         audio_ring_buffer_get(audio_temp_buffer, DMA_BUF_SIZE/2);
+//         uint32_t evt = 0;
+//         rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
+//         rt_device_write(audprc_dev, 0, audio_temp_buffer, DMA_BUF_SIZE);
+//     }
+// }
+
 static void audio_thread_entry(void *parameter)
 {
     int16_t audio_temp_buffer[DMA_BUF_SIZE];
     while (1)
     {
-        audio_ring_buffer_get(audio_temp_buffer, DMA_BUF_SIZE/2);
+        if(audio_callback)
+        {
+            audio_callback(audio_temp_buffer, DMA_BUF_SIZE/2);
+            for(int i=0;i<DMA_BUF_SIZE/2;i++)
+            {
+                audio_temp_buffer[i] = audio_temp_buffer[i] >> 5;
+            }
+        }
+        else
+        {
+            memset(audio_temp_buffer, 0, sizeof(audio_temp_buffer));
+        }
         uint32_t evt = 0;
         rt_event_recv(g_tx_ev, 1, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &evt);
         rt_device_write(audprc_dev, 0, audio_temp_buffer, DMA_BUF_SIZE);

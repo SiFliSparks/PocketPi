@@ -361,7 +361,6 @@ static void system_video(bool draw)
    osd_getinput();
 }
 
-extern void do_audio_frame();
 /* main emulation loop */
 void nes_emulate(void)
 {
@@ -407,6 +406,7 @@ void nes_emulate(void)
          /* TODO: dim the screen, and pause/silence the apu */
          system_video(true);
          frames_to_render = 0;
+         osd_stopsound();
       }
       else if (frames_to_render > 1)
       {
@@ -414,6 +414,7 @@ void nes_emulate(void)
          frames_to_render--;
          nes_renderframe(false);
          system_video(false);
+         osd_setsound(nes.apu->process);
       }
       else if ((1 == frames_to_render && true == nes.autoframeskip) || false == nes.autoframeskip)
       {
@@ -422,9 +423,9 @@ void nes_emulate(void)
          nes_renderframe(true);
          system_video(true);
          frame_counter++;
+         osd_setsound(nes.apu->process);
          // printf("render end: %d\n",(int)rt_tick_get());
       }
-      do_audio_frame();
    }
 }
 
