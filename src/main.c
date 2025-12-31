@@ -18,6 +18,11 @@
 #include "tjpgd.h"
 #include "game_list.h"
 #include "img_decode.h"
+#include "lodepng.h"
+
+#include "battery_calculator.h"
+#include "battery_table.h"
+
 
 // TODO:集中声明
 img_decode_result_t no_image_result = {0};  // 默认图标（用于无图标的游戏）
@@ -26,6 +31,21 @@ img_decode_result_t bg_result = {0};        // 背景图片
 lv_img_dsc_t no_image_dsc;
 lv_img_dsc_t bg_dsc;
 lv_obj_t * bg_img;
+
+lv_obj_t * top_bar;
+lv_obj_t * battery_label;
+lv_obj_t * voltage_label;
+lv_obj_t * battery_img;
+lv_img_dsc_t battery_1_dsc;
+lv_img_dsc_t battery_2_dsc;
+lv_img_dsc_t battery_3_dsc;
+lv_img_dsc_t battery_4_dsc;
+lv_img_dsc_t battery_charging_dsc;
+
+
+uint8_t g_battery_percentage = 100;
+uint32_t g_battery_voltage = 4200;
+rt_thread_t battery_thread = RT_NULL;
 
 LV_FONT_DECLARE(nmdws_16);
 
@@ -69,6 +89,47 @@ int mnt_init(void)
     return RT_EOK;
 }
 INIT_ENV_EXPORT(mnt_init);
+
+void battery_monitor_task(void *parameter)
+{
+    // 1. 初始化电池计算器
+    battery_calculator_t battery_calc;
+    battery_calculator_config_t calc_config = {
+        .charging_table = charging_curve_table,
+        .charging_table_size = charging_curve_table_size,
+        .discharging_table = discharge_curve_table,
+        .discharging_table_size = discharge_curve_table_size,
+        .charge_filter_threshold = 50,      // 充电时50mV阈值
+        .discharge_filter_threshold = 30,   // 放电时30mV阈值
+        .filter_count = 3,                  // 需要3次确认
+        .secondary_filter_enabled = true,   // 启用二级滤波
+        .secondary_filter_weight_pre = 90,  // 前电压权重90%
+        .secondary_filter_weight_cur = 10   // 当前电压权重10%
+    };
+    
+    battery_calculator_init(&battery_calc, &calc_config);
+    
+    while (1)
+    {
+        // 2. 读取ADC电压值
+        rt_device_t battery_device = rt_device_find("bat1");
+        rt_adc_cmd_read_arg_t read_arg;
+        read_arg.channel = 7;
+        
+        rt_adc_enable((rt_adc_device_t)battery_device, read_arg.channel);
+        rt_thread_mdelay(300);
+        rt_uint32_t voltage = rt_adc_read((rt_adc_device_t)battery_device, read_arg.channel);
+        rt_adc_disable((rt_adc_device_t)battery_device, read_arg.channel);
+        
+        // 3. 计算电量百分比
+        uint8_t percentage = battery_calculator_get_percent(&battery_calc, voltage);   
+        g_battery_percentage = percentage;
+        g_battery_voltage = voltage;
+        // g_battery_percentage = (float)(voltage - 35000) / (42000 - 35000) * 100;
+        rt_kprintf("Battery Voltage: %u mV, Percentage: %u%%\n", voltage, percentage);
+        rt_thread_mdelay(1000);
+    }
+}
 
 // TODO:分离SD卡初始化到单独文件,实现热插拔检测
 void sdcard_init(void)
@@ -595,6 +656,9 @@ int main(void)
 {
     /* Output a message on console using printf function */
     rt_kprintf("lchspi-extension.\n");
+    battery_thread = rt_thread_create("battery_mon",
+        battery_monitor_task, RT_NULL,
+        2048, 20, 100);
 
     opus_heap_init();
 
@@ -650,6 +714,21 @@ int main(void)
         rt_kprintf("Failed to decode bg.jpg\n");
     }
 
+    unsigned w = 0, h = 0;
+    uint8_t* decodedata=NULL;
+    int r = lodepng_decode32_file(&decodedata, &w, &h, "A:battery_1.png");
+    rt_kprintf("Decode battery_1.png result: %d\n", r);
+    rt_kprintf("battery_1.png size: %ux%u\n", w, h);
+    if(r == 0)
+    {
+        battery_1_dsc.header.always_zero = 0;
+        battery_1_dsc.header.w = w;
+        battery_1_dsc.header.h = h;
+        battery_1_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+        battery_1_dsc.data_size = w * h * 4;
+        battery_1_dsc.data = decodedata;
+    }
+
     input_init();
     g = lv_group_create();
     indev = lv_indev_create();
@@ -664,6 +743,38 @@ int main(void)
     float ratio = ratio_x > ratio_y ? ratio_x : ratio_y;
     lv_img_set_zoom(bg_img, (int)(256 * ratio));
     list_init(); 
+    
+    top_bar = lv_obj_create(lv_scr_act());
+    lv_obj_set_style_radius(top_bar, 0, 0);
+    lv_obj_set_style_border_width(top_bar, 0, 0);
+    lv_obj_set_style_border_opa(top_bar, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(top_bar, 320, 24);
+    lv_obj_set_style_bg_color(top_bar, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(top_bar, LV_OPA_50, 0);
+    lv_obj_set_pos(top_bar, 0, 0);
+    battery_label = lv_label_create(top_bar);
+    lv_obj_set_style_text_font(battery_label, &nmdws_16, 0);
+    lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, -4, 0);
+    voltage_label = lv_label_create(top_bar);
+    lv_obj_set_style_text_font(voltage_label, &nmdws_16, 0);
+    lv_obj_align(voltage_label, LV_ALIGN_RIGHT_MID, -120, 0);
+    battery_img = lv_img_create(top_bar);
+    lv_img_set_src(battery_img, &battery_1_dsc);
+    // lv_obj_align(battery_img, LV_ALIGN_RIGHT_MID, -120, 0);
+    lv_obj_set_pos(battery_img,0,0);
+    // float battery_scale_x = 24.0f / 200;
+    // float battery_scale_y = 24.0f / 200;
+    // float battery_scale = battery_scale_x < battery_scale_y ? battery_scale_x : battery_scale_y;
+    // lv_img_set_zoom(battery_img, (int)(256 * battery_scale));
+    if( battery_thread != RT_NULL)
+    {
+        rt_thread_startup(battery_thread);
+    }
+    else
+    {
+        rt_kprintf("Failed to create battery monitor thread\n");
+    }
+
     /* Infinite loop */
 
     while (1)
@@ -674,7 +785,8 @@ int main(void)
             {
                 lv_obj_delete(nes_img_obj);
                 nes_img_obj = NULL;
-                free(lcdfb);
+                // free(lcdfb);
+                opus_heap_free(lcdfb);
                 lcdfb = NULL;
                 // 清理旧的游戏列表（如果存在）
                 list_cleanup();
@@ -682,6 +794,24 @@ int main(void)
                 list_init();
                 lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
             }
+            lv_label_set_text_fmt(battery_label, "%d%%", g_battery_percentage);
+            lv_label_set_text_fmt(voltage_label, "%dmV", g_battery_voltage);
+            // if(g_battery_percentage >= 75)
+            // {
+            //     lv_img_set_src(battery_img, "A:/battery_4.png");
+            // }
+            // else if(g_battery_percentage >= 50)
+            // {
+            //     lv_img_set_src(battery_img, "A:/battery_3.png");
+            // }
+            // else if(g_battery_percentage >= 25)
+            // {
+            //     lv_img_set_src(battery_img, "A:/battery_2.png");
+            // }
+            // else
+            // {
+            //     lv_img_set_src(battery_img, "A:/battery_1.png");
+            // }
             uint32_t ms = lv_task_handler();
             rt_thread_mdelay(ms);
         }

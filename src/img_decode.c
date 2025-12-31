@@ -47,9 +47,9 @@ static int img_decode_out_func_rgb888(JDEC* jd, void* bitmap, JRECT* rect)
     uint32_t y, bws, bwd;
     
     // 输出进度（可选）
-    if (rect->left == 0) {
-        rt_kprintf("\rDecoding: %lu%%\n", (rect->top << jd->scale) * 100UL / jd->height);
-    }
+    // if (rect->left == 0) {
+    //     rt_kprintf("\rDecoding: %lu%%\n", (rect->top << jd->scale) * 100UL / jd->height);
+    // }
     
     // 拷贝解码的 RGB888 矩形到帧缓冲区
     src = (uint8_t*)bitmap;

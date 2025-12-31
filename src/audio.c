@@ -7,6 +7,7 @@ audio_ring_buffer_t audio_ring_buffer = {
     .write_p = 0,
     .read_p = 0
 };
+extern int audio_shift_bits;
 static rt_thread_t audio_thread = RT_NULL;
 extern void (*audio_callback)(void *buffer, int length);
 
@@ -57,6 +58,11 @@ void audio_ring_buffer_get(int16_t *samples, int length)
     }
 }
 
+void audio_set_volume(int vol)
+{
+    
+}
+
 // static void audio_thread_entry(void *parameter)
 // {
 //     int16_t audio_temp_buffer[DMA_BUF_SIZE];
@@ -79,7 +85,7 @@ static void audio_thread_entry(void *parameter)
             audio_callback(audio_temp_buffer, DMA_BUF_SIZE/2);
             for(int i=0;i<DMA_BUF_SIZE/2;i++)
             {
-                audio_temp_buffer[i] = audio_temp_buffer[i] >> 5;
+                audio_temp_buffer[i] = audio_temp_buffer[i] >> audio_shift_bits;
             }
         }
         else
@@ -108,7 +114,7 @@ rt_err_t audio_init()
     err = rt_device_open(audcodec_dev, RT_DEVICE_FLAG_WRONLY);
     RT_ASSERT(RT_EOK == err);
 
-    //2. 设置发送完成的回到函数
+    //2. 设置发送完成的回调函数
     rt_device_set_tx_complete(audprc_dev, speaker_tx_done);
     
     //3. 设置一次DMA buffer的大小，底层驱动里会使用2个这样的DMA buffer做ping/pong buffer
@@ -126,15 +132,15 @@ rt_err_t audio_init()
 #if BSP_ENABLE_DAC2
     caps.sub_type |= (1 << HAL_AUDCODEC_DAC_CH1);
 #endif
-    caps.udata.config.channels   = 1; //最后的输出为一个声道
-    caps.udata.config.samplerate = 32000; //采样率, 8000/11025/12000/16000/22050/24000/32000/44100/48000
-    caps.udata.config.samplefmt = 16; //位深度8 16 24 or 32
+    caps.udata.config.channels   = AUDIO_CHANNEL_NUM; //最后的输出为一个声道
+    caps.udata.config.samplerate = AUDIO_SAMPLE_RATE; //采样率, 8000/11025/12000/16000/22050/24000/32000/44100/48000
+    caps.udata.config.samplefmt = AUDIO_SAMPLE_BITS; //位深度8 16 24 or 32
     rt_device_control(audcodec_dev, AUDIO_CTL_CONFIGURE, &caps);
     
     struct rt_audio_sr_convert cfg;
-    cfg.channel = 1; //源数据的通道个数，如果是2，则数据传入的格式位LRLRLR....的interleave格式
-    cfg.source_sr = 32000; //源数据的采样率
-    cfg.dest_sr = 32000;   //播放时的采样率  
+    cfg.channel = AUDIO_CHANNEL_NUM; //源数据的通道个数，如果是2，则数据传入的格式位LRLRLR....的interleave格式
+    cfg.source_sr = AUDIO_SAMPLE_RATE; //源数据的采样率
+    cfg.dest_sr = AUDIO_SAMPLE_RATE;   //播放时的采样率  
     rt_device_control(audprc_dev, AUDIO_CTL_OUTPUTSRC, (void *)(&cfg));
 
     //数据选择，一路源数据就这样配置就行了，多路源数据的处理参考《音频通路mix&mux功能说明.docx》
@@ -150,23 +156,24 @@ rt_err_t audio_init()
     //源数据格式说明
     caps.main_type = AUDIO_TYPE_OUTPUT;
     caps.sub_type = HAL_AUDPRC_TX_CH0;
-    caps.udata.config.channels   = 1;
-    caps.udata.config.samplerate = 32000;
-    caps.udata.config.samplefmt = 16;
+    caps.udata.config.channels   = AUDIO_CHANNEL_NUM;
+    caps.udata.config.samplerate = AUDIO_SAMPLE_RATE;
+    caps.udata.config.samplefmt = AUDIO_SAMPLE_BITS;
     rt_device_control(audprc_dev, AUDIO_CTL_CONFIGURE, &caps);
 
     //从EQ配置表中获得音量并设置到codec，vol_level为0 ~ 15
-    // uint8_t vol_level = 1;
+    int vol_level = 0;
     // int volumex2 = eq_get_music_volumex2(vol_level);
     // if (caps.udata.config.samplerate == 16000 || caps.udata.config.samplerate == 8000)
     //    volumex2 = eq_get_tel_volumex2(vol_level);
-    // rt_device_control(audcodec_dev, AUDIO_CTL_SETVOLUME, (void *)vol_level);
+    rt_device_control(audcodec_dev, AUDIO_CTL_SETVOLUME, (void *)vol_level);
 
     //开始播放
     int stream = AUDIO_STREAM_REPLAY | ((1 << HAL_AUDPRC_TX_CH0) << 8);
     rt_device_control(audprc_dev, AUDIO_CTL_START, (void *)&stream);
     stream = AUDIO_STREAM_REPLAY | ((1 << HAL_AUDCODEC_DAC_CH0) << 8);
     rt_device_control(audcodec_dev, AUDIO_CTL_START, &stream);
+    rt_device_control(audcodec_dev, AUDIO_CTL_MUTE, (void *)0); //取消静音
     rt_event_send(g_tx_ev, 1);
     if (audio_thread == RT_NULL)
     {

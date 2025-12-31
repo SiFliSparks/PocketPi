@@ -23,6 +23,9 @@
 #include "input.h"
 #include "audio.h"
 
+#include "drv_epic.h"
+#include "string.h"
+
 // TODO: 删除无用函数
 
 void key_scan();
@@ -61,6 +64,10 @@ void key_set(int argc, char **argv)
     //make compiler happy
 }
 MSH_CMD_EXPORT(key_set, set key_state value e.g: key_debug 0x0000);
+
+void *opus_heap_malloc(uint32_t size);
+
+void opus_heap_free(void *p);
 
 #include "rtthread.h"
 #include <drivers/audio.h>
@@ -214,16 +221,16 @@ static void set_palette(rgb_t *pal)
         myPalette[i] = (c >> 8) | ((c & 0xff) << 8);
         // myPalette[i]=c;
     }
-    // for(i=0;i<256;i++)
-    // {
-    //     // PaletteARGB[i] = (0xff << 24) | (pal[i].r <<16) | (pal[i].g <<8) | (pal[i].b);
-    //     lv_color32_t col;
-    //     col.blue = pal[i].b;
-    //     col.green = pal[i].g;
-    //     col.red = pal[i].r;
-    //     col.alpha = 0xff;
-    //     lv_image_buf_set_palette(&nes_img_dsc, i, col);
-    // }
+    for(i=0;i<256;i++)
+    {
+        PaletteARGB[i] = (0xff << 24) | (pal[i].r <<16) | (pal[i].g <<8) | (pal[i].b);
+        // lv_color32_t col;
+        // col.blue = pal[i].b;
+        // col.green = pal[i].g;
+        // col.red = pal[i].r;
+        // col.alpha = 0xff;
+        // lv_image_buf_set_palette(&nes_img_dsc, i, col);
+    }
 }
 
 /* clear all frames to a particular color */
@@ -246,33 +253,91 @@ static void free_write(int num_dirties, rect_t *dirty_rects)
     bmp_destroy(&myBitmap);
 }
 
+static rt_err_t lcd_flush_done(rt_device_t dev, void *buffer)
+{
+    // redrawNesFlag = 0;
+}
+
+int is_paused = 0;
 uint16_t *lcdfb;
 extern lv_obj_t * bg_img;
 int redrawNesFlag = 0; // 0:not redraw, 1:need redraw, 2:redrawing
+EPIC_LayerConfigTypeDef input_layers[1];
+EPIC_LayerConfigTypeDef output_layers[1];
+rt_device_t disp = RT_NULL;
+static uint8_t tmp[256*224];
 static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
 {
     // printf("look up start: %d\n",(int)rt_tick_get());
     // while(redrawNesFlag) rt_thread_mdelay(1);
-    for(int y=0;y<224;y++)
-    {
-        for(int x=0;x<256;x++)
-        {
-            uint16_t pixel = myPalette[bmp->line[0][y*256+x]];
-            pixel = (pixel >> 8) | ((pixel & 0xff) << 8);
-            ((uint16_t *)lcdfb)[y*256+x] = (pixel);
-            // ((uint16_t *)lcdfb)[224*(256-x-1)+y] = (pixel); //rotate -90
-        }
-    }
+    // for(int y=0;y<224;y++)
+    // {
+    //     for(int x=0;x<256;x++)
+    //     {
+    //         uint16_t pixel = myPalette[bmp->line[0][y*256+x]];
+    //         pixel = (pixel >> 8) | ((pixel & 0xff) << 8);
+    //         ((uint16_t *)lcdfb)[y*256+x] = (pixel);
+    //         // ((uint16_t *)lcdfb)[224*(256-x-1)+y] = (pixel); //rotate -90
+    //     }
+    // }
     // printf("look up end: %d\n",(int)rt_tick_get());
     // printf("flush start: %d\n",(int)rt_tick_get());
     
+    int32_t t = rt_tick_get();
+    memcpy(tmp, bmp->line[0], 256*224);
+    HAL_EPIC_LayerConfigInit(&input_layers[0]);
+        input_layers[0].data = (uint8_t *)tmp;
+        input_layers[0].color_mode = EPIC_COLOR_L8;
+        input_layers[0].width = 256;  // 270
+        input_layers[0].height = 224; // 270
+        input_layers[0].x_offset = -16;
+        input_layers[0].y_offset = 16;
+        input_layers[0].total_width = 256;
+        input_layers[0].color_en = false;
+        input_layers[0].alpha = 255;
+        input_layers[0].ax_mode = ALPHA_BLEND_RGBCOLOR;
+        input_layers[0].lookup_table = (uint8_t *)PaletteARGB;
+        input_layers[0].lookup_table_size = 256;
+        input_layers[0].transform_cfg.angle = 900;   // 设置旋转角度
+        input_layers[0].transform_cfg.pivot_x = 128; // 设置旋转中心X坐标
+        input_layers[0].transform_cfg.pivot_y = 112; // 设置旋转中心Y坐标
+
+    HAL_EPIC_LayerConfigInit(&output_layers[0]);
+        output_layers[0].data = (uint8_t *)lcdfb;
+        output_layers[0].color_mode = EPIC_COLOR_RGB565;
+        output_layers[0].width = 224;  // 270
+        output_layers[0].height = 256; // 270
+        output_layers[0].x_offset = 0;
+        output_layers[0].y_offset = 0;
+        output_layers[0].total_width = 224;
+        output_layers[0].color_en = false;
+        output_layers[0].alpha = 255;
+        output_layers[0].ax_mode = ALPHA_BLEND_RGBCOLOR;
+        output_layers[0].lookup_table = NULL;
+        output_layers[0].lookup_table_size = 0;
+    
+    drv_epic_blend(input_layers, 1, output_layers, NULL);
+    // drv_epic_wait_done();
+    // rt_kprintf("NES frame blit time: %d ms\n", (int)(rt_tick_get() - t));
+
     lv_img_cache_invalidate_src(&nes_img_dsc);
     lv_obj_invalidate(nes_img_obj); // 标记该对象需要重绘
     // printf("flush end: %d\n",(int)rt_tick_get());
 
     // lv_obj_add_flag(bg_img, LV_OBJ_FLAG_HIDDEN);
-    uint32_t ms = lv_task_handler();
+    // uint32_t ms = lv_task_handler();
     // rt_thread_mdelay(ms);
+
+    if((disp!=RT_NULL) && (!is_paused))
+    {
+        // rt_graphix_ops(disp)->set_window(0, 0, 256, 224);
+    rt_device_set_tx_complete(disp, lcd_flush_done);
+        rt_graphix_ops(disp)->draw_rect_async((const char *)lcdfb, (240-224)/2, (320-256)/2, 224-1+(240-224)/2, 256-1+(320-256)/2);
+    }
+    if(is_paused)
+    {
+        lv_task_handler();
+    }
 }
 
 static void SaveState()
@@ -362,7 +427,6 @@ void nes_save_state()
 }
 MSH_CMD_EXPORT(nes_save_state, save nes state);
 static lv_obj_t * pause_menu = NULL;
-int is_paused = 0;
 extern lv_group_t * g;
 extern lv_indev_t * indev;
 
@@ -484,6 +548,8 @@ extern void trigger_quit();
 
 int selectedSlot = 0;
 int lastMenuButtonState = 0;
+int lastLButtonState = 0;
+int lastRButtonState = 0;
 static int ConvertGamepadInput()
 {
     int result = 0;
@@ -504,6 +570,7 @@ static int ConvertGamepadInput()
     int menuButtonState = input_get_key_state(INPUT_KEY_MENU);
     if (menuButtonState && !lastMenuButtonState)
     {
+        rt_thread_mdelay(100);
         // Menu button pressed
         trigger_event(event_togglepause);
         is_paused = !is_paused;
@@ -517,6 +584,19 @@ static int ConvertGamepadInput()
         }
     }
     lastMenuButtonState = menuButtonState;
+
+    int lButtonState = input_get_key_state(INPUT_KEY_L);
+    if (lButtonState && !lastLButtonState)
+    {
+        if(audio_shift_bits < 8) audio_shift_bits++;
+    }
+    lastLButtonState = lButtonState;
+    int rButtonState = input_get_key_state(INPUT_KEY_R);
+    if (rButtonState && !lastRButtonState)
+    {
+        if(audio_shift_bits > 0) audio_shift_bits--;
+    }
+    lastRButtonState = rButtonState;
 
     if (input_get_key_state(INPUT_KEY_A)) // a
     {
@@ -563,6 +643,7 @@ static int ConvertGamepadInput()
     if (input_get_key_state(INPUT_KEY_R)) // r
     {
         // this button is unused
+        // if(audio_shift_bits > 0) audio_shift_bits--;
     }
 
     if (input_get_key_state(INPUT_KEY_LEFT)) // left
@@ -583,6 +664,7 @@ static int ConvertGamepadInput()
     if (input_get_key_state(INPUT_KEY_L)) // l
     {
         // this button is unused
+        // if(audio_shift_bits < 8) audio_shift_bits++;
     }
     return result;
 }
@@ -659,8 +741,10 @@ extern void log_chain_logfunc(int (*logfunc)(const char *string));
 int osd_init()
 {
     log_chain_logfunc(logprint);
+    disp = rt_device_find("lcd");
 
-    lcdfb = malloc(sizeof(uint16_t) * 256 * 224);
+    // lcdfb = malloc(sizeof(uint16_t) * 256 * 224);
+    lcdfb = opus_heap_malloc(sizeof(uint16_t) * 256 * 224);
     if(lcdfb == NULL)
     {
         printf("Failed to allocate memory for lcdfb\n");
@@ -668,8 +752,8 @@ int osd_init()
     }
     key_init();
     nes_img_dsc.header.always_zero = 0;
-    nes_img_dsc.header.w = 256;
-    nes_img_dsc.header.h = 224;
+    nes_img_dsc.header.w = 224;
+    nes_img_dsc.header.h = 256;
     nes_img_dsc.data_size = 224 * 256 * 2;
     nes_img_dsc.header.cf = LV_COLOR_FORMAT_NATIVE; 
     nes_img_dsc.data = (const uint8_t *)lcdfb;
@@ -678,8 +762,8 @@ int osd_init()
     lv_img_set_zoom(nes_img_obj, 256); // 
     lv_img_set_src(nes_img_obj, &nes_img_dsc); // 设置图像数据源
     lv_obj_align(nes_img_obj, LV_ALIGN_CENTER, 0, 0); // 居中显示，你可以调整位置和大小
-    lv_img_set_pivot(nes_img_obj, 256/2, 224/2); // 设置旋转中心为图像中心
-    // lv_img_set_angle(nes_img_obj, 900); 
+    lv_img_set_pivot(nes_img_obj, 224/2, 256/2); // 设置旋转中心为图像中心
+    lv_img_set_angle(nes_img_obj, 2700); 
 
     return 0;
 }
